@@ -66,7 +66,9 @@ jobs:
           Run-App "target\debug\ev-pos.exe" "1-dashboard" @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "dashboard" }
           Run-App "target\debug\ev-pos.exe" "2-counter"   @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "counter"; EV_POS_DEV_CART = "BRK-001,2*ACC-001"; EV_POS_DEV_PAY = "1" }
           Run-App "target\debug\ev-pos.exe" "3-workshop"  @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "workshop" }
-          Run-App "target\release\ev-pos.exe" "4-release-first-run" @{ EV_POS_DATA_DIR = "$env:RUNNER_TEMP\evpos-fresh" }
+          Run-App "target\debug\ev-pos.exe" "4-product-form" @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "products"; EV_POS_DEV_EDIT_PRODUCT = "20" }
+          Run-App "target\debug\ev-pos.exe" "5-job-card"  @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "workshop"; EV_POS_DEV_JOB = "2" }
+          Run-App "target\release\ev-pos.exe" "6-release-first-run" @{ EV_POS_DATA_DIR = "$env:RUNNER_TEMP\evpos-fresh" }
 
       - name: Upload screenshots
         if: always()

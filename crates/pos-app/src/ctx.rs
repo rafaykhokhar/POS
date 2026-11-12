@@ -128,6 +128,14 @@ impl Ctx {
                 ui.global::<crate::WorkshopData>().invoke_open_job(id);
             }
         }
+        if let Ok(id) = std::env::var("EV_POS_DEV_EDIT_PRODUCT") {
+            if let Ok(id) = id.parse::<i32>() {
+                ui.global::<crate::ProductsData>().invoke_edit(id);
+            }
+        }
+        if std::env::var("EV_POS_DEV_NEW_BIKE").ok().as_deref() == Some("1") {
+            ui.global::<crate::VehiclesData>().invoke_new_bike();
+        }
         if let Ok(bike) = std::env::var("EV_POS_DEV_SELL") {
             if let Ok(id) = bike.parse::<i32>() {
                 ui.global::<crate::VehiclesData>().invoke_open_sell(id);

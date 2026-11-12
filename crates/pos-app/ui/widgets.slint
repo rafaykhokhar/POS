@@ -226,9 +226,16 @@ export component Field inherits VerticalLayout {
 
     spacing: 6px;
     horizontal-stretch: 1;
+    // Boxes line up at the top in a row, and columns share the width equally.
+    alignment: start;
+    preferred-width: 0px;
+    min-width: 0px;
 
     if root.label != "" : Label {
         text: root.label;
+        preferred-width: 0px;
+        min-width: 0px;
+        overflow: elide;
     }
     box := Rectangle {
         height: root.field-height;
@@ -269,6 +276,9 @@ export component Field inherits VerticalLayout {
             }
             Rectangle {
                 horizontal-stretch: 1;
+                // What's typed must not change how wide the box is.
+                preferred-width: 0px;
+                min-width: 0px;
                 input := TextInput {
                     width: 100%;
                     height: 100%;
@@ -313,12 +323,16 @@ export component Field inherits VerticalLayout {
         color: Theme.danger;
         font-size: Theme.fs-xs;
         wrap: word-wrap;
+        preferred-width: 0px;
+        min-width: 0px;
     }
     if root.hint != "" && root.error == "" : Text {
         text: root.hint;
         color: Theme.muted;
         font-size: Theme.fs-xs;
         wrap: word-wrap;
+        preferred-width: 0px;
+        min-width: 0px;
     }
 }
 
@@ -331,8 +345,14 @@ export component TextArea inherits VerticalLayout {
     callback edited(string);
     spacing: 6px;
     horizontal-stretch: 1;
+    alignment: start;
+    preferred-width: 0px;
+    min-width: 0px;
     if root.label != "" : Label {
         text: root.label;
+        preferred-width: 0px;
+        min-width: 0px;
+        overflow: elide;
     }
     Rectangle {
         height: root.area-height;
@@ -385,9 +405,15 @@ export component Select inherits VerticalLayout {
     callback selected(int);
     spacing: 6px;
     horizontal-stretch: 1;
+    alignment: start;
+    preferred-width: 0px;
+    min-width: 0px;
 
     if root.label != "" : Label {
         text: root.label;
+        preferred-width: 0px;
+        min-width: 0px;
+        overflow: elide;
     }
     box := Rectangle {
         height: root.field-height;
@@ -401,6 +427,7 @@ export component Select inherits VerticalLayout {
             spacing: 8px;
             Text {
                 horizontal-stretch: 1;
+                preferred-width: 0px;
                 text: root.current-index >= 0 && root.current-index < root.model.length ? root.model[root.current-index] : root.placeholder;
                 color: root.current-index >= 0 && root.current-index < root.model.length ? Theme.text : Theme.muted;
                 font-size: Theme.fs-md;
@@ -502,6 +529,9 @@ export component Toggle inherits Rectangle {
     callback toggled(bool);
     min-height: 26px;
     horizontal-stretch: 1;
+    // Share the row equally with the boxes next to it.
+    min-width: 0px;
+    preferred-width: 0px;
     HorizontalLayout {
         spacing: 12px;
         VerticalLayout {
@@ -535,12 +565,16 @@ export component Toggle inherits Rectangle {
                 font-size: Theme.fs-md;
                 font-weight: 500;
                 wrap: word-wrap;
+                preferred-width: 0px;
+                min-width: 0px;
             }
             if root.description != "" : Text {
                 text: root.description;
                 color: Theme.muted;
                 font-size: Theme.fs-sm;
                 wrap: word-wrap;
+                preferred-width: 0px;
+                min-width: 0px;
             }
         }
     }
