@@ -1,0 +1,18 @@
+[package]
+name = "pos-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "ev-pos"
+path = "src/main.rs"
+
+[dependencies]
+pos-core = { path = "../pos-core" }
+slint = "1.18"
+chrono.workspace = true
+dirs = "6"
+rfd = "0.15"
+
+[build-dependencies]
+slint-build = "1.18"

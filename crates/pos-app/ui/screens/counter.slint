@@ -1,0 +1,1046 @@
+// Counter: type product codes, build the bill, take payment.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, Button, ButtonKind, Icons, IconButton, Card, Badge, StockPill, EmptyState, Th, Td, Divider, KeyValue, Stepper, Modal, DialogFooter, Segmented, Notice, Label } from "../widgets.slint";
+import { App, ProductHit } from "../globals.slint";
+import { CustomerPicker } from "common.slint";
+
+export struct CartRow {
+    code: string,
+    name: string,
+    price: string,
+    qty: int,
+    discount: string,
+    has-discount: bool,
+    total: string,
+    stock: int,
+    level: int,
+    info: string,
+}
+
+export struct HeldRow {
+    label: string,
+    items: string,
+    total: string,
+    time: string,
+}
+
+export struct PayForm {
+    method: int,
+    cash: string,
+    bank: string,
+    bank-name: string,
+    reference: string,
+}
+
+export global CounterData {
+    in-out property <string> query;
+    in-out property <[ProductHit]> hits;
+    in-out property <int> hit-index: 0;
+    in-out property <string> message;
+    in-out property <[CartRow]> cart;
+    in-out property <int> customer-id;
+    in-out property <string> customer-name;
+    in-out property <string> customer-phone;
+    in-out property <string> customer-balance;
+    in-out property <bool> customer-owing;
+    in-out property <string> items-count: "0";
+    in-out property <string> subtotal;
+    in-out property <string> discount-text;
+    in-out property <string> discount-total;
+    in-out property <bool> has-discount;
+    in-out property <string> tax;
+    in-out property <string> tax-label;
+    in-out property <bool> show-tax;
+    in-out property <string> total;
+    in-out property <string> total-plain;
+    in-out property <[string]> quick-amounts;
+    in-out property <[HeldRow]> held;
+    // payment flow
+    in-out property <bool> show-pay;
+    in-out property <string> pay-error;
+    in-out property <bool> show-done;
+    in-out property <string> done-invoice;
+    in-out property <string> done-total;
+    in-out property <string> done-change;
+    in-out property <string> done-balance;
+    in-out property <bool> done-has-change;
+    in-out property <bool> done-has-balance;
+
+    callback query-changed(string);
+    callback submit-query(string);
+    callback pick(int);
+    callback set-qty(int, int);
+    callback set-line-discount(int, string);
+    callback remove(int);
+    callback clear();
+    callback hold();
+    callback resume(int);
+    callback discard-held(int);
+    callback set-discount(string);
+    callback customer-changed(int);
+    callback open-pay();
+    // returns change/remaining text for the given entries
+    pure callback pay-preview(PayForm) -> string;
+    callback pay(PayForm) -> bool;
+    callback new-sale();
+    callback print-receipt(int);
+}
+
+component CartLineView inherits Rectangle {
+    in property <CartRow> line;
+    in property <int> index;
+    in property <bool> allow-discount;
+    height: 62px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 6px;
+        spacing: 8px;
+        Td {
+            width: 20px;
+            text: root.index + 1;
+            text-color: Theme.muted;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+            Text {
+                text: root.line.name;
+                color: Theme.text;
+                font-size: Theme.fs-md;
+                font-weight: 600;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.line.code;
+                    color: Theme.accent;
+                    font-size: Theme.fs-sm;
+                    font-weight: 700;
+                }
+                Text {
+                    text: root.line.info;
+                    color: root.line.level >= 2 ? Theme.danger : Theme.muted;
+                    font-size: Theme.fs-sm;
+                    overflow: elide;
+                }
+            }
+        }
+        Td {
+            width: 76px;
+            text: root.line.price;
+            horizontal-alignment: right;
+            text-color: Theme.text-2;
+        }
+        VerticalLayout {
+            alignment: center;
+            Stepper {
+                value: root.line.qty;
+                changed(v) => {
+                    CounterData.set-qty(root.index, v);
+                }
+            }
+        }
+        if root.allow-discount : VerticalLayout {
+            alignment: center;
+            width: 76px;
+            Field {
+                field-height: 32px;
+                font-size: Theme.fs;
+                placeholder: "0";
+                align: TextHorizontalAlignment.right;
+                text: root.line.discount;
+                accepted(t) => {
+                    CounterData.set-line-discount(root.index, t);
+                }
+            }
+        }
+        Td {
+            width: 90px;
+            text: root.line.total;
+            horizontal-alignment: right;
+            font-weight: 700;
+            font-size: Theme.fs-md;
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: Icons.trash;
+                tint: Theme.danger;
+                clicked => {
+                    CounterData.remove(root.index);
+                }
+            }
+        }
+    }
+}
+
+component PayDialog inherits Modal {
+    property <int> method: 0;
+    property <string> cash: CounterData.total-plain;
+    property <string> bank: "";
+    property <string> bank-name;
+    property <string> reference;
+    property <PayForm> form: {
+        method: root.method,
+        cash: root.cash,
+        bank: root.bank,
+        bank-name: root.bank-name,
+        reference: root.reference,
+    };
+    property <string> preview: CounterData.pay-preview(root.form);
+    title: "Take payment";
+    subtitle: CounterData.customer-id > 0 ? "Customer: " + CounterData.customer-name : "Walk-in customer";
+    dialog-width: 560px;
+    close => {
+        CounterData.show-pay = false;
+    }
+
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 10px;
+        spacing: 18px;
+        Rectangle {
+            height: 96px;
+            border-radius: Theme.radius-lg;
+            background: @linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: "Amount due";
+                    color: #ccfbf1;
+                    font-size: Theme.fs;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: CounterData.total;
+                    color: #ffffff;
+                    font-size: 36px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        Segmented {
+            fill: true;
+            items: ["Cash", "Bank transfer", "Cash + Bank"];
+            current <=> root.method;
+            changed(i) => {
+                if i == 0 {
+                    root.cash = CounterData.total-plain;
+                    root.bank = "";
+                } else if i == 1 {
+                    root.cash = "";
+                    root.bank = CounterData.total-plain;
+                } else {
+                    root.cash = "";
+                    root.bank = "";
+                }
+            }
+        }
+        if root.method == 0 : VerticalLayout {
+            spacing: 10px;
+            cash-in := Field {
+                label: "Cash received";
+                prefix: App.currency;
+                text <=> root.cash;
+                field-height: 50px;
+                font-size: 20px;
+                input-type: InputType.decimal;
+                accepted => {
+                    CounterData.pay(root.form);
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                for q in CounterData.quick-amounts : Button {
+                    text: q;
+                    small: true;
+                    clicked => {
+                        root.cash = q;
+                    }
+                }
+            }
+        }
+        if root.method == 1 : VerticalLayout {
+            spacing: 12px;
+            Field {
+                label: "Amount transferred";
+                prefix: App.currency;
+                text <=> root.bank;
+                field-height: 46px;
+                font-size: 18px;
+                input-type: InputType.decimal;
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Field {
+                    label: "Bank";
+                    placeholder: "e.g. Meezan, HBL";
+                    text <=> root.bank-name;
+                }
+                Field {
+                    label: "Reference / transaction ID";
+                    placeholder: "Optional";
+                    text <=> root.reference;
+                }
+            }
+        }
+        if root.method == 2 : VerticalLayout {
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 12px;
+                Field {
+                    label: "Cash part";
+                    prefix: App.currency;
+                    text <=> root.cash;
+                    input-type: InputType.decimal;
+                }
+                Field {
+                    label: "Bank part";
+                    prefix: App.currency;
+                    text <=> root.bank;
+                    input-type: InputType.decimal;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Field {
+                    label: "Bank";
+                    placeholder: "e.g. Meezan, HBL";
+                    text <=> root.bank-name;
+                }
+                Field {
+                    label: "Reference";
+                    placeholder: "Optional";
+                    text <=> root.reference;
+                }
+            }
+        }
+        Rectangle {
+            height: 48px;
+            border-radius: Theme.radius;
+            background: Theme.surface-2;
+            border-width: 1px;
+            border-color: Theme.border;
+            Text {
+                text: root.preview;
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: 700;
+            }
+        }
+        if CounterData.pay-error != "" : Notice {
+            text: CounterData.pay-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                CounterData.show-pay = false;
+            }
+        }
+        Button {
+            text: "Complete sale";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            large: true;
+            clicked => {
+                CounterData.pay(root.form);
+            }
+        }
+    }
+}
+
+component DoneDialog inherits Modal {
+    title: "";
+    dialog-width: 440px;
+    close => {
+        CounterData.new-sale();
+    }
+    VerticalLayout {
+        padding: 26px;
+        padding-top: 0px;
+        spacing: 14px;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 72px;
+                height: 72px;
+                border-radius: 36px;
+                background: Theme.success-soft;
+                Rectangle {
+                    width: 52px;
+                    height: 52px;
+                    border-radius: 26px;
+                    background: Theme.success;
+                    Image {
+                        source: Icons.check;
+                        width: 28px;
+                        height: 28px;
+                        colorize: #ffffff;
+                    }
+                }
+            }
+        }
+        Text {
+            text: "Sale complete";
+            color: Theme.text;
+            font-size: Theme.fs-2xl;
+            font-weight: 800;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: "Invoice " + CounterData.done-invoice + " · " + CounterData.done-total;
+            color: Theme.muted;
+            font-size: Theme.fs-md;
+            horizontal-alignment: center;
+        }
+        if CounterData.done-has-change : Rectangle {
+            height: 84px;
+            border-radius: Theme.radius-lg;
+            background: Theme.warn-soft;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: "Give change";
+                    color: Theme.warn;
+                    font-size: Theme.fs;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: CounterData.done-change;
+                    color: Theme.text;
+                    font-size: 32px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        if CounterData.done-has-balance : Notice {
+            tone: Tone.warn;
+            text: "Balance " + CounterData.done-balance + " added to the customer's account.";
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Receipt";
+            icon: Icons.printer;
+            clicked => {
+                CounterData.print-receipt(0);
+            }
+        }
+        Button {
+            text: "A4 invoice";
+            icon: Icons.file;
+            clicked => {
+                CounterData.print-receipt(1);
+            }
+        }
+        Button {
+            text: "Start new sale";
+            icon: Icons.plus;
+            kind: ButtonKind.primary;
+            large: true;
+            clicked => {
+                CounterData.new-sale();
+            }
+        }
+    }
+}
+
+component HeldDialog inherits Modal {
+    callback done();
+    title: "Held bills";
+    subtitle: "Bills put on hold. Resume one to continue.";
+    dialog-width: 560px;
+    close => {
+        root.done();
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 10px;
+        spacing: 8px;
+        if CounterData.held.length == 0 : EmptyState {
+            icon: Icons.pause;
+            title: "No held bills";
+            text: "Use “Hold” (F8) to park a bill and serve the next customer.";
+        }
+        for h[i] in CounterData.held : Rectangle {
+            height: 62px;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border;
+            background: Theme.surface-2;
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 10px;
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    Text {
+                        text: h.label;
+                        color: Theme.text;
+                        font-size: Theme.fs-md;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: h.items + " · held at " + h.time;
+                        color: Theme.muted;
+                        font-size: Theme.fs-sm;
+                    }
+                }
+                Text {
+                    text: h.total;
+                    color: Theme.text;
+                    font-size: Theme.fs-md;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: Icons.trash;
+                        tint: Theme.danger;
+                        clicked => {
+                            CounterData.discard-held(i);
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Resume";
+                        kind: ButtonKind.soft;
+                        small: true;
+                        clicked => {
+                            CounterData.resume(i);
+                            root.done();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component CounterScreen inherits Rectangle {
+    property <bool> show-held: false;
+    // Per-item discount column only when there is room for it.
+    property <bool> line-discounts: App.perms.discounts;
+    background: Theme.bg;
+
+    function focus-entry() {
+        entry.focus-input();
+    }
+
+    keys := FocusScope {
+        capture-key-pressed(event) => {
+            if CounterData.show-pay || CounterData.show-done || root.show-held {
+                if event.text == Key.Escape {
+                    CounterData.show-pay = false;
+                    root.show-held = false;
+                    if CounterData.show-done {
+                        CounterData.new-sale();
+                    }
+                    return accept;
+                }
+                return reject;
+            }
+            if event.text == Key.F2 {
+                root.focus-entry();
+                return accept;
+            }
+            if event.text == Key.F8 {
+                CounterData.hold();
+                return accept;
+            }
+            if event.text == Key.F12 {
+                CounterData.open-pay();
+                return accept;
+            }
+            if CounterData.query != "" && CounterData.hits.length > 0 {
+                if event.text == Key.DownArrow {
+                    CounterData.hit-index = min(CounterData.hit-index + 1, CounterData.hits.length - 1);
+                    return accept;
+                }
+                if event.text == Key.UpArrow {
+                    CounterData.hit-index = max(CounterData.hit-index - 1, 0);
+                    return accept;
+                }
+                if event.text == Key.Escape {
+                    CounterData.query = "";
+                    CounterData.query-changed("");
+                    return accept;
+                }
+            }
+            reject
+        }
+
+        HorizontalLayout {
+            // ------------------------------------------------ left: entry + cart
+            left := Rectangle {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 16px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
+                            Text {
+                                text: "Counter";
+                                color: Theme.text;
+                                font-size: Theme.fs-3xl;
+                                font-weight: 800;
+                                letter-spacing: -0.5px;
+                            }
+                            Text {
+                                text: "Type a code and press Enter. Use 2*CODE to add two.";
+                                color: Theme.muted;
+                                font-size: Theme.fs-md;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Button {
+                                text: CounterData.held.length > 0 ? "Held bills (" + CounterData.held.length + ")" : "Held bills";
+                                icon: Icons.pause;
+                                clicked => {
+                                    root.show-held = true;
+                                }
+                            }
+                        }
+                    }
+
+                    entry-card := Card {
+                        height: 76px;
+                        HorizontalLayout {
+                            padding: 12px;
+                            spacing: 10px;
+                            entry := Field {
+                                icon: Icons.search;
+                                placeholder: "Product code or name…  (F2)";
+                                field-height: 52px;
+                                font-size: 18px;
+                                text <=> CounterData.query;
+                                edited(t) => {
+                                    CounterData.query-changed(t);
+                                }
+                                accepted(t) => {
+                                    CounterData.submit-query(t);
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Button {
+                                    text: "Add";
+                                    icon: Icons.plus;
+                                    kind: ButtonKind.primary;
+                                    large: true;
+                                    clicked => {
+                                        CounterData.submit-query(CounterData.query);
+                                        root.focus-entry();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if CounterData.message != "" : Notice {
+                        text: CounterData.message;
+                        tone: Tone.warn;
+                    }
+
+                    // Cart
+                    Card {
+                        vertical-stretch: 1;
+                        clip: true;
+                        VerticalLayout {
+                            Rectangle {
+                                height: 42px;
+                                background: Theme.surface-2;
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 6px;
+                                    spacing: 8px;
+                                    Th {
+                                        width: 20px;
+                                        text: "#";
+                                    }
+                                    Th {
+                                        horizontal-stretch: 1;
+                                        text: "ITEM";
+                                    }
+                                    Th {
+                                        width: 76px;
+                                        text: "PRICE";
+                                        horizontal-alignment: right;
+                                    }
+                                    Th {
+                                        width: 92px;
+                                        text: "QTY";
+                                        horizontal-alignment: center;
+                                    }
+                                    if root.line-discounts : Th {
+                                        width: 76px;
+                                        text: "DISCOUNT";
+                                        horizontal-alignment: right;
+                                    }
+                                    Th {
+                                        width: 90px;
+                                        text: "TOTAL";
+                                        horizontal-alignment: right;
+                                    }
+                                    Rectangle {
+                                        width: 30px;
+                                    }
+                                }
+                                Rectangle {
+                                    y: parent.height - 1px;
+                                    height: 1px;
+                                    background: Theme.border;
+                                }
+                            }
+                            if CounterData.cart.length == 0 : Rectangle {
+                                vertical-stretch: 1;
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 18px;
+                                    EmptyState {
+                                        icon: Icons.cart;
+                                        title: "The bill is empty";
+                                        text: "Type a product code above and press Enter.";
+                                    }
+                                    HorizontalLayout {
+                                        alignment: center;
+                                        spacing: 10px;
+                                        for k in [
+                                            { key: "F2", label: "Search" },
+                                            { key: "↑ ↓", label: "Pick" },
+                                            { key: "F8", label: "Hold bill" },
+                                            { key: "F12", label: "Pay" },
+                                        ] : Rectangle {
+                                            height: 30px;
+                                            horizontal-stretch: 0;
+                                            border-radius: 8px;
+                                            background: Theme.surface-2;
+                                            border-width: 1px;
+                                            border-color: Theme.border;
+                                            HorizontalLayout {
+                                                padding-left: 6px;
+                                                padding-right: 10px;
+                                                spacing: 8px;
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    Rectangle {
+                                                        height: 20px;
+                                                        border-radius: 5px;
+                                                        background: Theme.surface;
+                                                        border-width: 1px;
+                                                        border-color: Theme.border-strong;
+                                                        HorizontalLayout {
+                                                            padding-left: 6px;
+                                                            padding-right: 6px;
+                                                            Text {
+                                                                text: k.key;
+                                                                color: Theme.text;
+                                                                font-size: 11px;
+                                                                font-weight: 700;
+                                                                vertical-alignment: center;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Text {
+                                                    text: k.label;
+                                                    color: Theme.text-2;
+                                                    font-size: Theme.fs-sm;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if CounterData.cart.length > 0 : ListView {
+                                vertical-stretch: 1;
+                                for row[i] in CounterData.cart : CartLineView {
+                                    line: row;
+                                    index: i;
+                                    allow-discount: root.line-discounts;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Suggestions drop-down over the cart
+                if CounterData.query != "" && CounterData.hits.length > 0 : Rectangle {
+                    x: entry-card.x + 12px;
+                    y: entry-card.y + entry-card.height + 4px;
+                    width: entry-card.width - 24px - 100px;
+                    height: min(CounterData.hits.length, 7) * 54px + 10px;
+                    border-radius: Theme.radius-lg;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    drop-shadow-blur: 30px;
+                    drop-shadow-offset-y: 12px;
+                    drop-shadow-color: Theme.shadow-strong;
+                    clip: true;
+                    VerticalLayout {
+                        padding: 5px;
+                        for h[i] in CounterData.hits : Rectangle {
+                            height: 54px;
+                            visible: i < 7;
+                            border-radius: 9px;
+                            background: i == CounterData.hit-index ? Theme.accent-soft : hta.has-hover ? Theme.hover : transparent;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                spacing: 12px;
+                                Rectangle {
+                                    width: 92px;
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Rectangle {
+                                                height: 24px;
+                                                border-radius: 6px;
+                                                background: Theme.surface-3;
+                                                HorizontalLayout {
+                                                    padding-left: 7px;
+                                                    padding-right: 7px;
+                                                    Text {
+                                                        text: h.code;
+                                                        color: Theme.accent;
+                                                        font-size: Theme.fs-sm;
+                                                        font-weight: 800;
+                                                        vertical-alignment: center;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: h.name;
+                                        color: Theme.text;
+                                        font-size: Theme.fs-md;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: h.info;
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-sm;
+                                        overflow: elide;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    StockPill {
+                                        stock: h.stock;
+                                        level: h.level;
+                                    }
+                                }
+                                Text {
+                                    width: 100px;
+                                    text: h.price;
+                                    color: Theme.text;
+                                    font-size: Theme.fs-md;
+                                    font-weight: 700;
+                                    horizontal-alignment: right;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            hta := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    CounterData.pick(h.id);
+                                    root.focus-entry();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ------------------------------------------------ right: customer + totals
+            Rectangle {
+                width: 344px;
+                background: Theme.surface;
+                Rectangle {
+                    x: 0;
+                    width: 1px;
+                    background: Theme.border;
+                }
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 18px;
+                    CustomerPicker {
+                        label: "Customer";
+                        empty-text: "Walk-in (optional): search…";
+                        customer-id <=> CounterData.customer-id;
+                        customer-name <=> CounterData.customer-name;
+                        customer-phone <=> CounterData.customer-phone;
+                        customer-balance <=> CounterData.customer-balance;
+                        customer-owing <=> CounterData.customer-owing;
+                        changed(id) => {
+                            CounterData.customer-changed(id);
+                        }
+                    }
+                    Rectangle {
+                        vertical-stretch: 1;
+                    }
+                    Rectangle {
+                        vertical-stretch: 0;
+                        border-radius: Theme.radius-lg;
+                        background: Theme.surface-2;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 12px;
+                            KeyValue {
+                                key: "Items";
+                                value: CounterData.items-count;
+                            }
+                            KeyValue {
+                                key: "Subtotal";
+                                value: CounterData.subtotal;
+                            }
+                            if App.perms.discounts : HorizontalLayout {
+                                spacing: 12px;
+                                Text {
+                                    text: "Bill discount";
+                                    color: Theme.text-2;
+                                    font-size: Theme.fs;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                                Field {
+                                    width: 130px;
+                                    horizontal-stretch: 0;
+                                    field-height: 32px;
+                                    font-size: Theme.fs;
+                                    prefix: "−";
+                                    placeholder: "0";
+                                    align: TextHorizontalAlignment.right;
+                                    text <=> CounterData.discount-text;
+                                    edited(t) => {
+                                        CounterData.set-discount(t);
+                                    }
+                                }
+                            }
+                            if CounterData.has-discount : KeyValue {
+                                key: "Total discount";
+                                value: "− " + CounterData.discount-total;
+                                value-color: Theme.success;
+                            }
+                            if CounterData.show-tax : KeyValue {
+                                key: CounterData.tax-label;
+                                value: CounterData.tax;
+                            }
+                            Divider { }
+                            HorizontalLayout {
+                                Text {
+                                    text: "Total";
+                                    color: Theme.text;
+                                    font-size: Theme.fs-lg;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                    horizontal-stretch: 1;
+                                }
+                                Text {
+                                    text: CounterData.total;
+                                    color: Theme.text;
+                                    font-size: Theme.fs-3xl;
+                                    font-weight: 800;
+                                    letter-spacing: -0.5px;
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Button {
+                            horizontal-stretch: 1;
+                            text: "Hold";
+                            icon: Icons.pause;
+                            shortcut: "F8";
+                            enabled: CounterData.cart.length > 0;
+                            clicked => {
+                                CounterData.hold();
+                            }
+                        }
+                        Button {
+                            horizontal-stretch: 1;
+                            text: "Clear";
+                            icon: Icons.trash;
+                            kind: ButtonKind.ghost;
+                            enabled: CounterData.cart.length > 0;
+                            clicked => {
+                                CounterData.clear();
+                                root.focus-entry();
+                            }
+                        }
+                    }
+                    Button {
+                        horizontal-stretch: 1;
+                        text: "Charge " + CounterData.total;
+                        kind: ButtonKind.primary;
+                        large: true;
+                        height: 58px;
+                        shortcut: "F12";
+                        enabled: CounterData.cart.length > 0;
+                        clicked => {
+                            CounterData.open-pay();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if CounterData.show-pay : PayDialog { }
+    if CounterData.show-done : DoneDialog { }
+    if root.show-held : HeldDialog {
+        done => {
+            root.show-held = false;
+            root.focus-entry();
+        }
+    }
+
+    init => {
+        root.focus-entry();
+    }
+}

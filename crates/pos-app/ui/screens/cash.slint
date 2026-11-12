@@ -1,0 +1,467 @@
+// Cash drawer: open with a float, cash in/out, close with a count.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, Button, ButtonKind, Icons, Card, Badge, EmptyState, Th, Td, KeyValue, Modal, DialogFooter, Segmented, Notice, PageHeader, Divider } from "../widgets.slint";
+import { App, KV } from "../globals.slint";
+
+export struct CashMoveRow {
+    reason: string,
+    user: string,
+    time: string,
+    amount: string,
+    positive: bool,
+}
+
+export struct ShiftRow {
+    opened: string,
+    closed: string,
+    by: string,
+    expected: string,
+    counted: string,
+    diff: string,
+    diff-tone: int,
+}
+
+export global CashData {
+    in-out property <bool> open;
+    in-out property <string> opened-info;
+    in-out property <[KV]> summary;
+    in-out property <string> expected;
+    in-out property <string> expected-plain;
+    in-out property <[CashMoveRow]> moves;
+    in-out property <[ShiftRow]> history;
+    in-out property <bool> show-move;
+    in-out property <int> move-dir;
+    in-out property <bool> show-close;
+    in-out property <string> error;
+    callback refresh();
+    callback open-drawer(string) -> bool;
+    callback cash-move(int, string, string) -> bool;
+    pure callback diff-text(string) -> string;
+    callback close-drawer(string, string) -> bool;
+}
+
+component MoveDialog inherits Modal {
+    property <string> amount;
+    property <string> reason;
+    title: CashData.move-dir > 0 ? "Put cash in" : "Take cash out";
+    subtitle: CashData.move-dir > 0 ? "e.g. change added to the drawer" : "e.g. shop expense, bank deposit, owner withdrawal";
+    dialog-width: 460px;
+    close => {
+        CashData.show-move = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Field {
+            label: "Amount";
+            prefix: App.currency;
+            input-type: InputType.decimal;
+            text <=> root.amount;
+            field-height: 46px;
+            font-size: 18px;
+        }
+        Field {
+            label: "Reason *";
+            placeholder: CashData.move-dir > 0 ? "Added change" : "Tea & snacks, electricity bill…";
+            text <=> root.reason;
+        }
+        if CashData.error != "" : Notice {
+            text: CashData.error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                CashData.show-move = false;
+            }
+        }
+        Button {
+            text: "Save";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                CashData.cash-move(CashData.move-dir, root.amount, root.reason);
+            }
+        }
+    }
+}
+
+component CloseDialog inherits Modal {
+    property <string> counted;
+    property <string> notes;
+    title: "Close cash drawer";
+    subtitle: "Count the cash in the drawer and enter the total.";
+    dialog-width: 500px;
+    close => {
+        CashData.show-close = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Rectangle {
+            height: 70px;
+            border-radius: Theme.radius-lg;
+            background: Theme.surface-2;
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: "Should be in the drawer";
+                    color: Theme.muted;
+                    font-size: Theme.fs-sm;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: CashData.expected;
+                    color: Theme.text;
+                    font-size: Theme.fs-2xl;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        Field {
+            label: "Cash counted";
+            prefix: App.currency;
+            input-type: InputType.decimal;
+            text <=> root.counted;
+            field-height: 50px;
+            font-size: 20px;
+        }
+        if root.counted != "" : Text {
+            text: CashData.diff-text(root.counted);
+            color: Theme.text;
+            font-size: Theme.fs-lg;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+        Field {
+            label: "Notes";
+            placeholder: "Optional";
+            text <=> root.notes;
+        }
+        if CashData.error != "" : Notice {
+            text: CashData.error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                CashData.show-close = false;
+            }
+        }
+        Button {
+            text: "Close drawer";
+            icon: Icons.lock;
+            kind: ButtonKind.primary;
+            clicked => {
+                CashData.close-drawer(root.counted, root.notes);
+            }
+        }
+    }
+}
+
+export component CashScreen inherits Rectangle {
+    property <string> opening;
+    background: Theme.bg;
+    ScrollView {
+        VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+            alignment: start;
+            PageHeader {
+                title: "Cash Drawer";
+                subtitle: "Track the cash in your drawer and close it at the end of the day";
+            }
+            if !CashData.open : Card {
+                VerticalLayout {
+                    padding: 28px;
+                    spacing: 16px;
+                    HorizontalLayout {
+                        spacing: 16px;
+                        Rectangle {
+                            width: 56px;
+                            height: 56px;
+                            border-radius: 16px;
+                            background: Theme.surface-3;
+                            Image {
+                                source: Icons.lock;
+                                width: 26px;
+                                height: 26px;
+                                colorize: Theme.muted;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: "The cash drawer is closed";
+                                color: Theme.text;
+                                font-size: Theme.fs-xl;
+                                font-weight: 800;
+                            }
+                            Text {
+                                text: "Open it at the start of the day with the cash already inside (the float).";
+                                color: Theme.muted;
+                                font-size: Theme.fs-md;
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Field {
+                            width: 280px;
+                            horizontal-stretch: 0;
+                            label: "Cash in the drawer now";
+                            prefix: App.currency;
+                            input-type: InputType.decimal;
+                            placeholder: "0";
+                            text <=> root.opening;
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            Button {
+                                text: "Open drawer";
+                                icon: Icons.wallet;
+                                kind: ButtonKind.primary;
+                                clicked => {
+                                    if CashData.open-drawer(root.opening) {
+                                        root.opening = "";
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle { }
+                    }
+                    if CashData.error != "" && !CashData.show-close && !CashData.show-move : Notice {
+                        text: CashData.error;
+                    }
+                }
+            }
+            if CashData.open : HorizontalLayout {
+                spacing: 16px;
+                Card {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        padding: 22px;
+                        spacing: 14px;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 4px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Badge {
+                                        text: "Open";
+                                        tone: Tone.success;
+                                        dot: true;
+                                    }
+                                    Text {
+                                        text: CashData.opened-info;
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-sm;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                Text {
+                                    text: "Should be in the drawer";
+                                    color: Theme.text-2;
+                                    font-size: Theme.fs-md;
+                                }
+                                Text {
+                                    text: CashData.expected;
+                                    color: Theme.text;
+                                    font-size: 38px;
+                                    font-weight: 800;
+                                }
+                            }
+                        }
+                        Divider { }
+                        for s in CashData.summary : KeyValue {
+                            key: s.label;
+                            value: s.value;
+                            strong: s.tone == 9;
+                            value-color: s.tone == 1 ? Theme.danger : s.tone == 2 ? Theme.success : Theme.text;
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            Button {
+                                text: "Cash in";
+                                icon: Icons.plus;
+                                clicked => {
+                                    CashData.error = "";
+                                    CashData.move-dir = 1;
+                                    CashData.show-move = true;
+                                }
+                            }
+                            Button {
+                                text: "Cash out";
+                                icon: Icons.minus;
+                                clicked => {
+                                    CashData.error = "";
+                                    CashData.move-dir = -1;
+                                    CashData.show-move = true;
+                                }
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Count & close drawer";
+                                icon: Icons.lock;
+                                kind: ButtonKind.primary;
+                                clicked => {
+                                    CashData.error = "";
+                                    CashData.show-close = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                Card {
+                    width: 380px;
+                    VerticalLayout {
+                        padding: 22px;
+                        spacing: 10px;
+                        Text {
+                            text: "Cash in / out today";
+                            color: Theme.text;
+                            font-size: Theme.fs-lg;
+                            font-weight: 700;
+                        }
+                        if CashData.moves.length == 0 : Text {
+                            text: "Nothing yet.";
+                            color: Theme.muted;
+                        }
+                        for m in CashData.moves : HorizontalLayout {
+                            spacing: 10px;
+                            height: 44px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                Text {
+                                    text: m.reason;
+                                    color: Theme.text;
+                                    font-weight: 600;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: m.time + " · " + m.user;
+                                    color: Theme.muted;
+                                    font-size: Theme.fs-xs;
+                                }
+                            }
+                            Text {
+                                text: m.amount;
+                                color: m.positive ? Theme.success : Theme.danger;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+                        Rectangle { }
+                    }
+                }
+            }
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 8px;
+                    Text {
+                        text: "Past closings";
+                        color: Theme.text;
+                        font-size: Theme.fs-lg;
+                        font-weight: 700;
+                    }
+                    HorizontalLayout {
+                        height: 30px;
+                        spacing: 12px;
+                        Th {
+                            horizontal-stretch: 1;
+                            text: "OPENED";
+                        }
+                        Th {
+                            width: 170px;
+                            text: "CLOSED";
+                        }
+                        Th {
+                            width: 110px;
+                            text: "BY";
+                        }
+                        Th {
+                            width: 110px;
+                            text: "EXPECTED";
+                            horizontal-alignment: right;
+                        }
+                        Th {
+                            width: 110px;
+                            text: "COUNTED";
+                            horizontal-alignment: right;
+                        }
+                        Th {
+                            width: 110px;
+                            text: "DIFFERENCE";
+                            horizontal-alignment: right;
+                        }
+                    }
+                    if CashData.history.length == 0 : Text {
+                        text: "No closings yet.";
+                        color: Theme.muted;
+                        height: 40px;
+                        vertical-alignment: center;
+                    }
+                    for h in CashData.history : Rectangle {
+                        height: 40px;
+                        Rectangle {
+                            y: 0;
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Td {
+                                horizontal-stretch: 1;
+                                text: h.opened;
+                            }
+                            Td {
+                                width: 170px;
+                                text: h.closed;
+                                text-color: Theme.text-2;
+                            }
+                            Td {
+                                width: 110px;
+                                text: h.by;
+                                text-color: Theme.text-2;
+                            }
+                            Td {
+                                width: 110px;
+                                text: h.expected;
+                                horizontal-alignment: right;
+                            }
+                            Td {
+                                width: 110px;
+                                text: h.counted;
+                                horizontal-alignment: right;
+                            }
+                            Td {
+                                width: 110px;
+                                text: h.diff;
+                                font-weight: 700;
+                                text-color: h.diff-tone == 1 ? Theme.danger : h.diff-tone == 2 ? Theme.success : Theme.text-2;
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if CashData.show-move : MoveDialog { }
+    if CashData.show-close : CloseDialog { }
+}

@@ -1,0 +1,794 @@
+// Settings: shop details, money & tax, staff, workshop services, backups, activity, about.
+
+import { ScrollView, AboutSlint } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, TextArea, Select, Toggle, Button, ButtonKind, Icons, IconButton, Card, Badge, Avatar, EmptyState, Th, Td, KeyValue, Modal, DialogFooter, Segmented, Notice, PageHeader, Label } from "../widgets.slint";
+import { App } from "../globals.slint";
+
+export struct ShopForm {
+    name: string,
+    phone: string,
+    address: string,
+    email: string,
+    tax-number: string,
+    footer: string,
+    terms: string,
+}
+
+export struct MoneyForm {
+    currency: string,
+    decimals: int,
+    symbol-after: bool,
+    tax-rate: string,
+    tax-inclusive: bool,
+    tax-label: string,
+    low-default: string,
+    allow-negative: bool,
+    suggest-codes: bool,
+    service-days: string,
+}
+
+export struct StaffRow {
+    id: int,
+    name: string,
+    initials: string,
+    role: string,
+    role-index: int,
+    phone: string,
+    active: bool,
+    has-pin: bool,
+}
+
+export struct SvcRow {
+    id: int,
+    code: string,
+    name: string,
+    price: string,
+    price-plain: string,
+    active: bool,
+}
+
+export struct AuditRow {
+    when: string,
+    user: string,
+    action: string,
+    detail: string,
+}
+
+export global SettingsData {
+    in-out property <int> tab: 0;
+    in-out property <ShopForm> shop;
+    in-out property <MoneyForm> money;
+    in-out property <[StaffRow]> staff;
+    in-out property <[string]> role-names;
+    in-out property <[SvcRow]> services;
+    in-out property <[AuditRow]> audit;
+    in-out property <string> data-path;
+    in-out property <string> backup-path;
+    in-out property <string> last-backup;
+    in-out property <string> version;
+    in-out property <string> error;
+    // staff dialog
+    in-out property <bool> show-staff;
+    in-out property <StaffRow> staff-form;
+    in-out property <string> staff-error;
+    // service dialog
+    in-out property <bool> show-service;
+    in-out property <SvcRow> service-form;
+    in-out property <string> service-error;
+    callback refresh();
+    callback save-shop(ShopForm) -> bool;
+    callback save-money(MoneyForm) -> bool;
+    callback new-staff();
+    callback edit-staff(int);
+    callback save-staff(int, string, int, string, string, bool) -> bool;
+    callback new-service();
+    callback edit-service(int);
+    callback save-service(int, string, string, string, bool) -> bool;
+    callback backup-now();
+    callback open-folder();
+}
+
+component Section inherits Card {
+    in property <string> title;
+    in property <string> sub;
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        VerticalLayout {
+            spacing: 3px;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: 800;
+            }
+            if root.sub != "" : Text {
+                text: root.sub;
+                color: Theme.muted;
+                font-size: Theme.fs;
+                wrap: word-wrap;
+            }
+        }
+        @children
+    }
+}
+
+component ShopTab inherits VerticalLayout {
+    property <string> name: SettingsData.shop.name;
+    property <string> phone: SettingsData.shop.phone;
+    property <string> address: SettingsData.shop.address;
+    property <string> email: SettingsData.shop.email;
+    property <string> tax-number: SettingsData.shop.tax-number;
+    property <string> footer: SettingsData.shop.footer;
+    property <string> terms: SettingsData.shop.terms;
+    spacing: 16px;
+    Section {
+        title: "Shop details";
+        sub: "Shown on receipts, invoices and job cards.";
+        Field {
+            label: "Shop name";
+            text <=> root.name;
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Phone";
+                text <=> root.phone;
+            }
+            Field {
+                label: "Email";
+                text <=> root.email;
+            }
+            Field {
+                label: "Tax / NTN number";
+                text <=> root.tax-number;
+            }
+        }
+        Field {
+            label: "Address";
+            text <=> root.address;
+        }
+        Field {
+            label: "Receipt footer";
+            text <=> root.footer;
+        }
+        TextArea {
+            label: "Invoice terms (vehicle & workshop invoices)";
+            placeholder: "e.g. Warranty does not cover physical damage…";
+            text <=> root.terms;
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                text: "Save shop details";
+                icon: Icons.check;
+                kind: ButtonKind.primary;
+                clicked => {
+                    SettingsData.save-shop({
+                        name: root.name,
+                        phone: root.phone,
+                        address: root.address,
+                        email: root.email,
+                        tax-number: root.tax-number,
+                        footer: root.footer,
+                        terms: root.terms,
+                    });
+                }
+            }
+        }
+    }
+}
+
+component MoneyTab inherits VerticalLayout {
+    property <string> currency: SettingsData.money.currency;
+    property <int> decimals: SettingsData.money.decimals;
+    property <bool> symbol-after: SettingsData.money.symbol-after;
+    property <string> tax-rate: SettingsData.money.tax-rate;
+    property <bool> tax-inclusive: SettingsData.money.tax-inclusive;
+    property <string> tax-label: SettingsData.money.tax-label;
+    property <string> low-default: SettingsData.money.low-default;
+    property <bool> allow-negative: SettingsData.money.allow-negative;
+    property <bool> suggest-codes: SettingsData.money.suggest-codes;
+    property <string> service-days: SettingsData.money.service-days;
+    spacing: 16px;
+    Section {
+        title: "Money & tax";
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Currency symbol";
+                text <=> root.currency;
+            }
+            Select {
+                label: "Amounts";
+                model: ["Whole numbers (12,500)", "With cents (12,500.00)"];
+                current-index <=> root.decimals;
+            }
+            VerticalLayout {
+                alignment: end;
+                horizontal-stretch: 1;
+                Toggle {
+                    text: "Symbol after amount";
+                    checked <=> root.symbol-after;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Tax rate";
+                suffix: "%";
+                text <=> root.tax-rate;
+            }
+            Field {
+                label: "Tax name";
+                placeholder: "Tax, GST, VAT…";
+                text <=> root.tax-label;
+            }
+            VerticalLayout {
+                alignment: end;
+                horizontal-stretch: 1;
+                Toggle {
+                    text: "Prices include tax";
+                    checked <=> root.tax-inclusive;
+                }
+            }
+        }
+    }
+    Section {
+        title: "Stock & workshop";
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Default “turn red at” level for new products";
+                input-type: InputType.number;
+                text <=> root.low-default;
+            }
+            Field {
+                label: "Next service reminder after (days)";
+                input-type: InputType.number;
+                text <=> root.service-days;
+            }
+        }
+        Toggle {
+            text: "Suggest product codes automatically";
+            description: "Staff can still type their own code.";
+            checked <=> root.suggest-codes;
+        }
+        Toggle {
+            text: "Allow selling more than is in stock";
+            description: "Leave off so stock numbers stay accurate.";
+            checked <=> root.allow-negative;
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                text: "Save";
+                icon: Icons.check;
+                kind: ButtonKind.primary;
+                clicked => {
+                    SettingsData.save-money({
+                        currency: root.currency,
+                        decimals: root.decimals,
+                        symbol-after: root.symbol-after,
+                        tax-rate: root.tax-rate,
+                        tax-inclusive: root.tax-inclusive,
+                        tax-label: root.tax-label,
+                        low-default: root.low-default,
+                        allow-negative: root.allow-negative,
+                        suggest-codes: root.suggest-codes,
+                        service-days: root.service-days,
+                    });
+                }
+            }
+        }
+    }
+}
+
+component StaffDialog inherits Modal {
+    property <string> name: SettingsData.staff-form.name;
+    property <int> role: SettingsData.staff-form.role-index;
+    property <string> phone: SettingsData.staff-form.phone;
+    property <string> pin;
+    property <bool> active: SettingsData.staff-form.active;
+    title: SettingsData.staff-form.id == 0 ? "Add staff member" : "Edit staff member";
+    subtitle: "Each person logs in with their own PIN. Technicians don't need one.";
+    dialog-width: 560px;
+    close => {
+        SettingsData.show-staff = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Name *";
+                text <=> root.name;
+            }
+            Select {
+                label: "Role";
+                model: SettingsData.role-names;
+                current-index <=> root.role;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Phone";
+                text <=> root.phone;
+            }
+            Field {
+                label: SettingsData.staff-form.id == 0 ? "PIN (4–8 digits)" : "New PIN (leave empty to keep)";
+                password: true;
+                input-type: InputType.number;
+                text <=> root.pin;
+            }
+        }
+        Text {
+            text: root.role == 0 ? "Owner: full access, including settings and staff."
+                : root.role == 1 ? "Manager: everything except settings and staff."
+                : root.role == 2 ? "Salesperson: counter, bike sales, customers."
+                : root.role == 3 ? "Service Advisor: workshop, counter, customers."
+                : root.role == 4 ? "Technician: workshop jobs only."
+                : "Cashier: counter, customers, cash drawer.";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+        if SettingsData.staff-form.id != 0 : Toggle {
+            text: "Active";
+            description: "Turn off when someone leaves; their history stays.";
+            checked <=> root.active;
+        }
+        if SettingsData.staff-error != "" : Notice {
+            text: SettingsData.staff-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                SettingsData.show-staff = false;
+            }
+        }
+        Button {
+            text: "Save";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                SettingsData.save-staff(SettingsData.staff-form.id, root.name, root.role, root.phone, root.pin, root.active);
+            }
+        }
+    }
+}
+
+component ServiceDialog inherits Modal {
+    property <string> code: SettingsData.service-form.code;
+    property <string> name: SettingsData.service-form.name;
+    property <string> price: SettingsData.service-form.price-plain;
+    property <bool> active: SettingsData.service-form.active;
+    title: SettingsData.service-form.id == 0 ? "New workshop service" : "Edit workshop service";
+    subtitle: "Fixed-price labour you can add to job cards.";
+    dialog-width: 520px;
+    close => {
+        SettingsData.show-service = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                width: 130px;
+                horizontal-stretch: 0;
+                label: "Code *";
+                placeholder: "SRV-07";
+                text <=> root.code;
+            }
+            Field {
+                label: "Name *";
+                placeholder: "e.g. Periodic Service";
+                text <=> root.name;
+            }
+        }
+        Field {
+            label: "Price";
+            prefix: App.currency;
+            input-type: InputType.decimal;
+            text <=> root.price;
+        }
+        if SettingsData.service-form.id != 0 : Toggle {
+            text: "Active";
+            checked <=> root.active;
+        }
+        if SettingsData.service-error != "" : Notice {
+            text: SettingsData.service-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                SettingsData.show-service = false;
+            }
+        }
+        Button {
+            text: "Save";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                SettingsData.save-service(SettingsData.service-form.id, root.code, root.name, root.price, root.active);
+            }
+        }
+    }
+}
+
+component NavTab inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> active;
+    callback clicked;
+    height: 40px;
+    border-radius: 9px;
+    background: root.active ? Theme.accent-soft : ta.has-hover ? Theme.hover : transparent;
+    HorizontalLayout {
+        padding-left: 12px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 17px;
+                height: 17px;
+                colorize: root.active ? Theme.accent : Theme.text-2;
+            }
+        }
+        Text {
+            text: root.label;
+            color: root.active ? Theme.accent : Theme.text;
+            font-size: Theme.fs-md;
+            font-weight: root.active ? 700 : 500;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component SettingsScreen inherits Rectangle {
+    background: Theme.bg;
+    HorizontalLayout {
+        padding: 24px;
+        spacing: 22px;
+        VerticalLayout {
+            width: 220px;
+            spacing: 4px;
+            alignment: start;
+            Text {
+                text: "Settings";
+                color: Theme.text;
+                font-size: Theme.fs-3xl;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+            }
+            Rectangle {
+                height: 14px;
+            }
+            if App.perms.settings : NavTab {
+                label: "Shop details";
+                icon: Icons.store;
+                active: SettingsData.tab == 0;
+                clicked => {
+                    SettingsData.tab = 0;
+                }
+            }
+            if App.perms.settings : NavTab {
+                label: "Money & tax";
+                icon: Icons.banknote;
+                active: SettingsData.tab == 1;
+                clicked => {
+                    SettingsData.tab = 1;
+                }
+            }
+            if App.perms.staff : NavTab {
+                label: "Staff & PINs";
+                icon: Icons.users;
+                active: SettingsData.tab == 2;
+                clicked => {
+                    SettingsData.tab = 2;
+                    SettingsData.refresh();
+                }
+            }
+            if App.perms.settings : NavTab {
+                label: "Workshop services";
+                icon: Icons.wrench;
+                active: SettingsData.tab == 3;
+                clicked => {
+                    SettingsData.tab = 3;
+                    SettingsData.refresh();
+                }
+            }
+            if App.perms.settings : NavTab {
+                label: "Backup & data";
+                icon: Icons.database;
+                active: SettingsData.tab == 4;
+                clicked => {
+                    SettingsData.tab = 4;
+                    SettingsData.refresh();
+                }
+            }
+            if App.perms.settings : NavTab {
+                label: "Activity log";
+                icon: Icons.history;
+                active: SettingsData.tab == 5;
+                clicked => {
+                    SettingsData.tab = 5;
+                    SettingsData.refresh();
+                }
+            }
+            NavTab {
+                label: "About";
+                icon: Icons.info;
+                active: SettingsData.tab == 6;
+                clicked => {
+                    SettingsData.tab = 6;
+                }
+            }
+        }
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                alignment: start;
+                spacing: 16px;
+                padding-right: 6px;
+                if SettingsData.tab == 0 : ShopTab { }
+                if SettingsData.tab == 1 : MoneyTab { }
+                if SettingsData.tab == 2 : Section {
+                    title: "Staff & PINs";
+                    sub: "Add everyone who uses the system and choose what they can do.";
+                    HorizontalLayout {
+                        alignment: end;
+                        Button {
+                            text: "Add staff";
+                            icon: Icons.user-plus;
+                            kind: ButtonKind.primary;
+                            clicked => {
+                                SettingsData.new-staff();
+                            }
+                        }
+                    }
+                    for u in SettingsData.staff : Rectangle {
+                        height: 58px;
+                        Rectangle {
+                            y: 0;
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            VerticalLayout {
+                                alignment: center;
+                                Avatar {
+                                    initials: u.initials;
+                                    color-index: u.id;
+                                    size: 36px;
+                                }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                Text {
+                                    text: u.name;
+                                    color: u.active ? Theme.text : Theme.muted;
+                                    font-weight: 700;
+                                    font-size: Theme.fs-md;
+                                }
+                                Text {
+                                    text: (u.phone != "" ? u.phone + " · " : "") + (u.has-pin ? "Has PIN" : "No PIN (can't log in)");
+                                    color: Theme.muted;
+                                    font-size: Theme.fs-sm;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Badge {
+                                    text: u.role;
+                                    tone: u.role-index == 0 ? Tone.violet : u.role-index == 1 ? Tone.info : Tone.accent;
+                                }
+                            }
+                            if !u.active : VerticalLayout {
+                                alignment: center;
+                                Badge {
+                                    text: "Inactive";
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                IconButton {
+                                    icon: Icons.edit;
+                                    clicked => {
+                                        SettingsData.edit-staff(u.id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if SettingsData.tab == 3 : Section {
+                    title: "Workshop services";
+                    sub: "Your list of labour charges for job cards.";
+                    HorizontalLayout {
+                        alignment: end;
+                        Button {
+                            text: "New service";
+                            icon: Icons.plus;
+                            kind: ButtonKind.primary;
+                            clicked => {
+                                SettingsData.new-service();
+                            }
+                        }
+                    }
+                    if SettingsData.services.length == 0 : Text {
+                        text: "No services yet.";
+                        color: Theme.muted;
+                    }
+                    for s in SettingsData.services : Rectangle {
+                        height: 50px;
+                        Rectangle {
+                            y: 0;
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Td {
+                                width: 90px;
+                                text: s.code;
+                                text-color: Theme.accent;
+                                font-weight: 700;
+                            }
+                            Td {
+                                horizontal-stretch: 1;
+                                text: s.name;
+                                text-color: s.active ? Theme.text : Theme.muted;
+                            }
+                            if !s.active : VerticalLayout {
+                                alignment: center;
+                                Badge {
+                                    text: "Inactive";
+                                }
+                            }
+                            Td {
+                                width: 110px;
+                                text: s.price;
+                                font-weight: 700;
+                                horizontal-alignment: right;
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                IconButton {
+                                    icon: Icons.edit;
+                                    clicked => {
+                                        SettingsData.edit-service(s.id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if SettingsData.tab == 4 : Section {
+                    title: "Backup & data";
+                    sub: "Everything is stored in one file on this computer. A backup is made automatically every day when the app closes (the last 30 are kept).";
+                    KeyValue {
+                        key: "Data file";
+                        value: SettingsData.data-path;
+                    }
+                    KeyValue {
+                        key: "Automatic backups";
+                        value: SettingsData.backup-path;
+                    }
+                    KeyValue {
+                        key: "Latest backup";
+                        value: SettingsData.last-backup;
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end;
+                        Button {
+                            text: "Open data folder";
+                            icon: Icons.folder;
+                            clicked => {
+                                SettingsData.open-folder();
+                            }
+                        }
+                        Button {
+                            text: "Back up now…";
+                            icon: Icons.database;
+                            kind: ButtonKind.primary;
+                            clicked => {
+                                SettingsData.backup-now();
+                            }
+                        }
+                    }
+                    Notice {
+                        tone: Tone.info;
+                        text: "To restore: close the app, then replace pos.db in the data folder with a backup file renamed to pos.db.";
+                    }
+                }
+                if SettingsData.tab == 5 : Section {
+                    title: "Activity log";
+                    sub: "Who did what: logins, sales, price changes, stock adjustments, returns.";
+                    for a in SettingsData.audit : Rectangle {
+                        height: 44px;
+                        Rectangle {
+                            y: 0;
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Td {
+                                width: 170px;
+                                text: a.when;
+                                text-color: Theme.text-2;
+                            }
+                            Td {
+                                width: 100px;
+                                text: a.user;
+                                font-weight: 600;
+                            }
+                            HorizontalLayout {
+                                width: 90px;
+                                alignment: start;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Badge {
+                                        text: a.action;
+                                    }
+                                }
+                            }
+                            Td {
+                                horizontal-stretch: 1;
+                                text: a.detail;
+                            }
+                        }
+                    }
+                }
+                if SettingsData.tab == 6 : Section {
+                    title: "About";
+                    KeyValue {
+                        key: "EV Showroom POS";
+                        value: "Version " + SettingsData.version;
+                    }
+                    KeyValue {
+                        key: "Built with";
+                        value: "Rust · SQLite · Slint";
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        AboutSlint {
+                            height: 150px;
+                        }
+                    }
+                }
+                if SettingsData.error != "" : Notice {
+                    text: SettingsData.error;
+                }
+            }
+        }
+    }
+    if SettingsData.show-staff : StaffDialog { }
+    if SettingsData.show-service : ServiceDialog { }
+}

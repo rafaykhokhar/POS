@@ -1,0 +1,1244 @@
+// Workshop: job-card board, parts & labour, deliver & bill.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, TextArea, Select, Toggle, Button, ButtonKind, Icons, IconButton, Card, Badge, Avatar, EmptyState, Th, Td, Divider, KeyValue, Modal, DialogFooter, Segmented, Notice, Label, PageHeader } from "../widgets.slint";
+import { App } from "../globals.slint";
+import { CustomerPicker, ProductPicker } from "common.slint";
+
+export struct JobTile {
+    id: int,
+    no: string,
+    bike: string,
+    customer: string,
+    phone: string,
+    complaint: string,
+    tech: string,
+    tech-initials: string,
+    tech-color: int,
+    age: string,
+    total: string,
+    warranty: bool,
+    coupon: bool,
+    status: string,
+    status-code: int,
+    invoice: string,
+}
+
+export struct JobColumn {
+    title: string,
+    code: int,
+    jobs: [JobTile],
+}
+
+export struct JobItemRow {
+    id: int,
+    code: string,
+    desc: string,
+    qty: int,
+    price: string,
+    total: string,
+    free: bool,
+    is-part: bool,
+}
+
+export struct BikeHit {
+    id: int,
+    label: string,
+    customer: string,
+    phone: string,
+    coupons: int,
+}
+
+export struct JobDetail {
+    id: int,
+    no: string,
+    bike: string,
+    chassis: string,
+    customer: string,
+    phone: string,
+    status: string,
+    status-code: int,
+    complaint: string,
+    diagnosis: string,
+    odometer: string,
+    battery: string,
+    tech-index: int,
+    warranty: bool,
+    coupon: string,
+    created: string,
+    parts-total: string,
+    labor-total: string,
+    total: string,
+    open: bool,
+    invoice: string,
+    next-date: string,
+}
+
+export struct JobEdit {
+    complaint: string,
+    diagnosis: string,
+    odometer: string,
+    battery: string,
+    tech-index: int,
+    warranty: bool,
+}
+
+export struct NewJobForm {
+    odometer: string,
+    battery: string,
+    complaint: string,
+    tech-index: int,
+    warranty: bool,
+    coupon: bool,
+}
+
+export struct DeliverForm {
+    discount: string,
+    cash: string,
+    bank: string,
+    bank-name: string,
+    reference: string,
+    next-date: string,
+    next-km: string,
+}
+
+export global WorkshopData {
+    in-out property <int> view: 0;
+    in-out property <string> search;
+    in-out property <[JobColumn]> columns;
+    in-out property <[JobTile]> history;
+    in-out property <[string]> tech-names;
+    in-out property <[string]> service-names;
+    in-out property <[string]> service-prices;
+
+    // new job
+    in-out property <bool> show-new;
+    in-out property <[BikeHit]> bike-hits;
+    in-out property <int> new-bike-id;
+    in-out property <string> new-bike-label;
+    in-out property <string> new-bike-customer;
+    in-out property <int> new-coupons;
+    in-out property <string> new-error;
+
+    // job detail
+    in-out property <bool> show-job;
+    in-out property <JobDetail> job;
+    in-out property <[JobItemRow]> job-items;
+    in-out property <string> job-error;
+
+    // deliver
+    in-out property <bool> show-deliver;
+    in-out property <string> deliver-total;
+    in-out property <string> deliver-total-plain;
+    in-out property <string> deliver-error;
+
+    callback refresh();
+    callback open-new();
+    callback search-bikes(string);
+    callback pick-bike(int);
+    callback add-own-bike(int, string, string, string, string) -> bool;
+    callback create-job(NewJobForm) -> bool;
+    callback open-job(int);
+    callback set-status(int);
+    callback save-job(JobEdit) -> bool;
+    callback add-part(int);
+    callback add-service(int, string, string);
+    callback remove-item(int);
+    callback toggle-free(int, bool);
+    callback cancel-job();
+    callback open-deliver();
+    callback deliver(DeliverForm) -> bool;
+    callback print-job();
+    callback print-invoice();
+}
+
+global WsUi {
+    public pure function status-tone(code: int) -> Tone {
+        if code == 0 { return Tone.info; }
+        if code == 1 { return Tone.violet; }
+        if code == 2 { return Tone.warn; }
+        if code == 3 { return Tone.accent; }
+        if code == 4 { return Tone.success; }
+        if code == 5 { return Tone.neutral; }
+        return Tone.danger;
+    }
+}
+
+component JobCardTile inherits Rectangle {
+    in property <JobTile> j;
+    height: 142px;
+    border-radius: 12px;
+    background: ta.has-hover ? Theme.surface : Theme.surface;
+    border-width: ta.has-hover ? 1.5px : 1px;
+    border-color: ta.has-hover ? Theme.accent : Theme.border;
+    drop-shadow-blur: ta.has-hover ? 16px : 6px;
+    drop-shadow-offset-y: ta.has-hover ? 6px : 2px;
+    drop-shadow-color: Theme.shadow;
+    animate drop-shadow-blur, border-color { duration: 120ms; }
+    VerticalLayout {
+        padding: 12px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 6px;
+            Text {
+                text: root.j.no;
+                color: Theme.accent;
+                font-size: Theme.fs-sm;
+                font-weight: 800;
+                horizontal-stretch: 1;
+            }
+            if root.j.warranty : Badge {
+                text: "Warranty";
+                tone: Tone.info;
+            }
+            if root.j.coupon : Badge {
+                text: "Free service";
+                tone: Tone.success;
+            }
+        }
+        Text {
+            text: root.j.bike;
+            color: Theme.text;
+            font-size: Theme.fs-md;
+            font-weight: 700;
+            overflow: elide;
+        }
+        Text {
+            text: root.j.customer + (root.j.phone != "" ? " · " + root.j.phone : "");
+            color: Theme.text-2;
+            font-size: Theme.fs-sm;
+            overflow: elide;
+        }
+        Text {
+            text: root.j.complaint;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-stretch: 1;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            if root.j.tech != "" : Avatar {
+                initials: root.j.tech-initials;
+                color-index: root.j.tech-color;
+                size: 20px;
+            }
+            Text {
+                text: root.j.tech != "" ? root.j.tech : "Not assigned";
+                color: root.j.tech != "" ? Theme.text-2 : Theme.muted;
+                font-size: Theme.fs-xs;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            Text {
+                text: root.j.age;
+                color: Theme.muted;
+                font-size: Theme.fs-xs;
+                vertical-alignment: center;
+            }
+        }
+    }
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            WorkshopData.open-job(root.j.id);
+        }
+    }
+}
+
+component NewJobDialog inherits Modal {
+    property <string> query;
+    property <bool> own-bike: false;
+    property <int> cust-id;
+    property <string> cust-name;
+    property <string> cust-phone;
+    property <string> b-model;
+    property <string> b-chassis;
+    property <string> b-reg;
+    property <string> b-color;
+    property <string> odometer;
+    property <string> battery;
+    property <string> complaint;
+    property <int> tech: -1;
+    property <bool> warranty;
+    property <bool> coupon: WorkshopData.new-coupons > 0;
+    title: "New job card";
+    subtitle: WorkshopData.new-bike-id > 0 ? WorkshopData.new-bike-label : "Find the bike by chassis, number plate, customer name or phone.";
+    dialog-width: 720px;
+    close => {
+        WorkshopData.show-new = false;
+    }
+    ScrollView {
+        height: min(560px, body.preferred-height);
+        body := VerticalLayout {
+            padding: 22px;
+            padding-top: 8px;
+            spacing: 14px;
+            // Step 1: bike
+            if WorkshopData.new-bike-id == 0 && !root.own-bike : VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Field {
+                        icon: Icons.search;
+                        placeholder: "Chassis, number plate, customer or phone…";
+                        text <=> root.query;
+                        edited(t) => {
+                            WorkshopData.search-bikes(t);
+                        }
+                    }
+                    Button {
+                        text: "Customer's own bike";
+                        icon: Icons.plus;
+                        clicked => {
+                            root.own-bike = true;
+                        }
+                    }
+                }
+                for b in WorkshopData.bike-hits : Rectangle {
+                    height: 54px;
+                    border-radius: Theme.radius;
+                    border-width: 1px;
+                    border-color: bta.has-hover ? Theme.accent : Theme.border;
+                    background: bta.has-hover ? Theme.accent-soft : Theme.surface;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 12px;
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: Icons.scooter;
+                                width: 22px;
+                                height: 22px;
+                                colorize: Theme.info;
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            Text {
+                                text: b.label;
+                                color: Theme.text;
+                                font-weight: 700;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: b.customer + (b.phone != "" ? " · " + b.phone : "");
+                                color: Theme.muted;
+                                font-size: Theme.fs-sm;
+                            }
+                        }
+                        if b.coupons > 0 : VerticalLayout {
+                            alignment: center;
+                            Badge {
+                                text: b.coupons + " free services left";
+                                tone: Tone.success;
+                            }
+                        }
+                    }
+                    bta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            WorkshopData.pick-bike(b.id);
+                        }
+                    }
+                }
+                if root.query != "" && WorkshopData.bike-hits.length == 0 : Text {
+                    text: "No bike found. If it was bought elsewhere, use “Customer's own bike”.";
+                    color: Theme.muted;
+                }
+            }
+            if WorkshopData.new-bike-id == 0 && root.own-bike : VerticalLayout {
+                spacing: 12px;
+                CustomerPicker {
+                    label: "Customer *";
+                    customer-id <=> root.cust-id;
+                    customer-name <=> root.cust-name;
+                    customer-phone <=> root.cust-phone;
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Bike model *";
+                        placeholder: "e.g. Other EV 60V";
+                        text <=> root.b-model;
+                    }
+                    Field {
+                        label: "Colour";
+                        text <=> root.b-color;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Chassis number";
+                        text <=> root.b-chassis;
+                    }
+                    Field {
+                        label: "Number plate";
+                        text <=> root.b-reg;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    Button {
+                        text: "Back";
+                        kind: ButtonKind.ghost;
+                        clicked => {
+                            root.own-bike = false;
+                        }
+                    }
+                    Button {
+                        text: "Use this bike";
+                        kind: ButtonKind.soft;
+                        clicked => {
+                            WorkshopData.add-own-bike(root.cust-id, root.b-model, root.b-chassis, root.b-reg, root.b-color);
+                        }
+                    }
+                }
+            }
+
+            // Step 2: details
+            if WorkshopData.new-bike-id > 0 : VerticalLayout {
+                spacing: 14px;
+                Rectangle {
+                    height: 60px;
+                    border-radius: Theme.radius;
+                    background: Theme.info-soft;
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 8px;
+                        spacing: 12px;
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: Icons.scooter;
+                                width: 24px;
+                                height: 24px;
+                                colorize: Theme.info;
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            Text {
+                                text: WorkshopData.new-bike-label;
+                                color: Theme.text;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: WorkshopData.new-bike-customer;
+                                color: Theme.text-2;
+                                font-size: Theme.fs-sm;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Button {
+                                text: "Change";
+                                small: true;
+                                kind: ButtonKind.ghost;
+                                clicked => {
+                                    WorkshopData.new-bike-id = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+                TextArea {
+                    label: "Customer's complaint / work needed *";
+                    placeholder: "e.g. Brakes squeaking, range has dropped";
+                    text <=> root.complaint;
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Odometer (km)";
+                        input-type: InputType.number;
+                        text <=> root.odometer;
+                    }
+                    Field {
+                        label: "Battery condition";
+                        placeholder: "e.g. 92% health, range 60 km";
+                        text <=> root.battery;
+                    }
+                    Select {
+                        label: "Technician";
+                        placeholder: "Assign later";
+                        model: WorkshopData.tech-names;
+                        current-index <=> root.tech;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 20px;
+                    Toggle {
+                        text: "Warranty job";
+                        description: "Customer pays nothing; cost recorded for the claim";
+                        checked <=> root.warranty;
+                    }
+                    if WorkshopData.new-coupons > 0 : Toggle {
+                        text: "Use a free service coupon";
+                        description: WorkshopData.new-coupons + " left on this bike";
+                        checked <=> root.coupon;
+                    }
+                }
+            }
+            if WorkshopData.new-error != "" : Notice {
+                text: WorkshopData.new-error;
+            }
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                WorkshopData.show-new = false;
+            }
+        }
+        Button {
+            text: "Open job card";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            enabled: WorkshopData.new-bike-id > 0;
+            clicked => {
+                WorkshopData.create-job({
+                    odometer: root.odometer,
+                    battery: root.battery,
+                    complaint: root.complaint,
+                    tech-index: root.tech,
+                    warranty: root.warranty,
+                    coupon: root.coupon && WorkshopData.new-coupons > 0,
+                });
+            }
+        }
+    }
+}
+
+component JobDialog inherits Modal {
+    property <string> complaint: WorkshopData.job.complaint;
+    property <string> diagnosis: WorkshopData.job.diagnosis;
+    property <string> odometer: WorkshopData.job.odometer;
+    property <string> battery: WorkshopData.job.battery;
+    property <int> tech: WorkshopData.job.tech-index;
+    property <bool> warranty: WorkshopData.job.warranty;
+    property <int> service: -1;
+    property <string> svc-desc;
+    property <string> svc-price;
+    property <JobEdit> edit: {
+        complaint: root.complaint,
+        diagnosis: root.diagnosis,
+        odometer: root.odometer,
+        battery: root.battery,
+        tech-index: root.tech,
+        warranty: root.warranty,
+    };
+    title: WorkshopData.job.no + " · " + WorkshopData.job.bike;
+    subtitle: WorkshopData.job.customer + (WorkshopData.job.phone != "" ? " · " + WorkshopData.job.phone : "") + " · opened " + WorkshopData.job.created;
+    dialog-width: 1060px;
+    close => {
+        if WorkshopData.job.open {
+            WorkshopData.save-job(root.edit);
+        }
+        WorkshopData.show-job = false;
+    }
+    VerticalLayout {
+        // Status steps
+        HorizontalLayout {
+            padding-left: 22px;
+            padding-right: 22px;
+            padding-bottom: 8px;
+            spacing: 6px;
+            for s[i] in ["Received", "Diagnosing", "Waiting for parts", "In progress", "Ready"] : Rectangle {
+                height: 34px;
+                horizontal-stretch: 1;
+                border-radius: 8px;
+                background: i == WorkshopData.job.status-code ? Theme.tone-fg(WsUi.status-tone(i)) : i < WorkshopData.job.status-code ? Theme.tone-bg(WsUi.status-tone(i)) : sta.has-hover ? Theme.hover : Theme.surface-2;
+                border-width: 1px;
+                border-color: i == WorkshopData.job.status-code ? transparent : Theme.border;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    alignment: center;
+                    if i < WorkshopData.job.status-code : VerticalLayout {
+                        alignment: center;
+                        Image {
+                            source: Icons.check;
+                            width: 14px;
+                            height: 14px;
+                            colorize: Theme.tone-fg(WsUi.status-tone(i));
+                        }
+                    }
+                    Text {
+                        text: s;
+                        color: i == WorkshopData.job.status-code ? #ffffff : i < WorkshopData.job.status-code ? Theme.tone-fg(WsUi.status-tone(i)) : Theme.text-2;
+                        font-size: Theme.fs-sm;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+                sta := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    enabled: WorkshopData.job.open;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        WorkshopData.save-job(root.edit);
+                        WorkshopData.set-status(i);
+                    }
+                }
+            }
+        }
+        if !WorkshopData.job.open : HorizontalLayout {
+            padding-left: 22px;
+            padding-right: 22px;
+            Notice {
+                tone: WorkshopData.job.status-code == 5 ? Tone.success : Tone.neutral;
+                text: WorkshopData.job.status-code == 5 ? "Delivered and billed on invoice " + WorkshopData.job.invoice + ". Next service: " + WorkshopData.job.next-date : "This job was cancelled.";
+            }
+        }
+        ScrollView {
+            height: min(520px, body.preferred-height);
+            body := HorizontalLayout {
+                padding: 22px;
+                padding-top: 10px;
+                spacing: 22px;
+                // Left: details
+                VerticalLayout {
+                    width: 400px;
+                    spacing: 12px;
+                    TextArea {
+                        label: "Complaint / work needed";
+                        enabled: WorkshopData.job.open;
+                        text <=> root.complaint;
+                        area-height: 64px;
+                    }
+                    TextArea {
+                        label: "Technician's findings";
+                        placeholder: "What was found and fixed";
+                        enabled: WorkshopData.job.open;
+                        text <=> root.diagnosis;
+                        area-height: 64px;
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Field {
+                            label: "Odometer (km)";
+                            enabled: WorkshopData.job.open;
+                            input-type: InputType.number;
+                            text <=> root.odometer;
+                        }
+                        Select {
+                            label: "Technician";
+                            placeholder: "Not assigned";
+                            enabled: WorkshopData.job.open;
+                            model: WorkshopData.tech-names;
+                            current-index <=> root.tech;
+                        }
+                    }
+                    Field {
+                        label: "Battery condition";
+                        enabled: WorkshopData.job.open;
+                        text <=> root.battery;
+                    }
+                    Toggle {
+                        text: "Warranty job";
+                        description: "New parts and labour are free for the customer";
+                        enabled: WorkshopData.job.open;
+                        checked <=> root.warranty;
+                    }
+                    if WorkshopData.job.coupon != "" : Notice {
+                        tone: Tone.success;
+                        text: WorkshopData.job.coupon;
+                    }
+                }
+                // Right: parts & labour
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 12px;
+                    Text {
+                        text: "Parts & labour";
+                        color: Theme.text;
+                        font-size: Theme.fs-lg;
+                        font-weight: 700;
+                    }
+                    if WorkshopData.job.open : ProductPicker {
+                        placeholder: "Add a part: type code or name (taken from stock)";
+                        picked(id) => {
+                            WorkshopData.add-part(id);
+                        }
+                    }
+                    if WorkshopData.job.open : HorizontalLayout {
+                        spacing: 8px;
+                        Select {
+                            placeholder: "Add labour / service…";
+                            model: WorkshopData.service-names;
+                            current-index <=> root.service;
+                            selected(i) => {
+                                root.svc-price = WorkshopData.service-prices[i];
+                                root.svc-desc = "";
+                            }
+                        }
+                        Field {
+                            width: 150px;
+                            horizontal-stretch: 0;
+                            placeholder: "Or describe work";
+                            text <=> root.svc-desc;
+                        }
+                        Field {
+                            width: 110px;
+                            horizontal-stretch: 0;
+                            prefix: App.currency;
+                            placeholder: "Price";
+                            input-type: InputType.decimal;
+                            text <=> root.svc-price;
+                        }
+                        Button {
+                            text: "Add";
+                            icon: Icons.plus;
+                            kind: ButtonKind.soft;
+                            clicked => {
+                                WorkshopData.add-service(root.service, root.svc-desc, root.svc-price);
+                                root.service = -1;
+                                root.svc-desc = "";
+                                root.svc-price = "";
+                            }
+                        }
+                    }
+                    Rectangle {
+                        border-radius: Theme.radius;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        clip: true;
+                        VerticalLayout {
+                            if WorkshopData.job-items.length == 0 : Text {
+                                height: 70px;
+                                text: "No parts or labour added yet.";
+                                color: Theme.muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            for it in WorkshopData.job-items : Rectangle {
+                                height: 48px;
+                                Rectangle {
+                                    y: parent.height - 1px;
+                                    height: 1px;
+                                    background: Theme.border;
+                                }
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 6px;
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Badge {
+                                            text: it.is-part ? "Part" : "Labour";
+                                            tone: it.is-part ? Tone.info : Tone.violet;
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: center;
+                                        Text {
+                                            text: it.desc;
+                                            color: Theme.text;
+                                            font-weight: 600;
+                                            overflow: elide;
+                                        }
+                                        Text {
+                                            text: (it.code != "" ? it.code + " · " : "") + it.qty + " × " + it.price;
+                                            color: Theme.muted;
+                                            font-size: Theme.fs-xs;
+                                        }
+                                    }
+                                    if it.free : VerticalLayout {
+                                        alignment: center;
+                                        Badge {
+                                            text: "FREE";
+                                            tone: Tone.success;
+                                        }
+                                    }
+                                    Td {
+                                        width: 90px;
+                                        text: it.total;
+                                        font-weight: 700;
+                                        horizontal-alignment: right;
+                                        text-color: it.free ? Theme.muted : Theme.text;
+                                    }
+                                    if WorkshopData.job.open : VerticalLayout {
+                                        alignment: center;
+                                        IconButton {
+                                            icon: Icons.tag;
+                                            tint: it.free ? Theme.success : Theme.muted;
+                                            clicked => {
+                                                WorkshopData.toggle-free(it.id, !it.free);
+                                            }
+                                        }
+                                    }
+                                    if WorkshopData.job.open : VerticalLayout {
+                                        alignment: center;
+                                        IconButton {
+                                            icon: Icons.trash;
+                                            tint: Theme.danger;
+                                            clicked => {
+                                                WorkshopData.remove-item(it.id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        border-radius: Theme.radius;
+                        background: Theme.surface-2;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 8px;
+                            KeyValue {
+                                key: "Parts";
+                                value: WorkshopData.job.parts-total;
+                            }
+                            KeyValue {
+                                key: "Labour";
+                                value: WorkshopData.job.labor-total;
+                            }
+                            Divider { }
+                            KeyValue {
+                                key: "Estimate";
+                                value: WorkshopData.job.total;
+                                strong: true;
+                            }
+                        }
+                    }
+                    if WorkshopData.job-error != "" : Notice {
+                        text: WorkshopData.job-error;
+                    }
+                }
+            }
+        }
+        DialogFooter {
+            if WorkshopData.job.open : Button {
+                text: "Cancel job";
+                kind: ButtonKind.ghost;
+                icon: Icons.x;
+                clicked => {
+                    WorkshopData.cancel-job();
+                }
+            }
+            Button {
+                text: "Job card";
+                icon: Icons.printer;
+                clicked => {
+                    WorkshopData.save-job(root.edit);
+                    WorkshopData.print-job();
+                }
+            }
+            if WorkshopData.job.status-code == 5 : Button {
+                text: "Invoice";
+                icon: Icons.file;
+                clicked => {
+                    WorkshopData.print-invoice();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            if WorkshopData.job.open : Button {
+                text: "Save";
+                clicked => {
+                    if WorkshopData.save-job(root.edit) {
+                        WorkshopData.show-job = false;
+                    }
+                }
+            }
+            if WorkshopData.job.open : Button {
+                text: "Deliver & bill";
+                icon: Icons.receipt;
+                kind: ButtonKind.primary;
+                clicked => {
+                    if WorkshopData.save-job(root.edit) {
+                        WorkshopData.open-deliver();
+                    }
+                }
+            }
+            if !WorkshopData.job.open : Button {
+                text: "Close";
+                kind: ButtonKind.primary;
+                clicked => {
+                    WorkshopData.show-job = false;
+                }
+            }
+        }
+    }
+}
+
+component DeliverDialog inherits Modal {
+    property <string> discount;
+    property <string> cash: WorkshopData.deliver-total-plain;
+    property <string> bank;
+    property <string> bank-name;
+    property <string> reference;
+    property <string> next-date: WorkshopData.job.next-date;
+    property <string> next-km;
+    title: "Deliver & bill";
+    subtitle: WorkshopData.job.no + " · " + WorkshopData.job.customer;
+    dialog-width: 560px;
+    close => {
+        WorkshopData.show-deliver = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Rectangle {
+            height: 84px;
+            border-radius: Theme.radius-lg;
+            background: @linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: "Workshop bill";
+                    color: #ede9fe;
+                    font-size: Theme.fs;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: WorkshopData.deliver-total;
+                    color: #ffffff;
+                    font-size: 32px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            if App.perms.discounts : Field {
+                label: "Discount";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                placeholder: "0";
+                text <=> root.discount;
+            }
+            Field {
+                label: "Cash";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                text <=> root.cash;
+            }
+            Field {
+                label: "Bank transfer";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                placeholder: "0";
+                text <=> root.bank;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Bank";
+                placeholder: "Optional";
+                text <=> root.bank-name;
+            }
+            Field {
+                label: "Reference";
+                placeholder: "Optional";
+                text <=> root.reference;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Next service date";
+                placeholder: "YYYY-MM-DD";
+                text <=> root.next-date;
+            }
+            Field {
+                label: "Or at (km)";
+                input-type: InputType.number;
+                placeholder: "Optional";
+                text <=> root.next-km;
+            }
+        }
+        Text {
+            text: "Any amount not paid stays on the customer's account.";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+        if WorkshopData.deliver-error != "" : Notice {
+            text: WorkshopData.deliver-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Back";
+            kind: ButtonKind.ghost;
+            clicked => {
+                WorkshopData.show-deliver = false;
+            }
+        }
+        Button {
+            text: "Complete & hand over";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                WorkshopData.deliver({
+                    discount: root.discount,
+                    cash: root.cash,
+                    bank: root.bank,
+                    bank-name: root.bank-name,
+                    reference: root.reference,
+                    next-date: root.next-date,
+                    next-km: root.next-km,
+                });
+            }
+        }
+    }
+}
+
+export component WorkshopScreen inherits Rectangle {
+    background: Theme.bg;
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        PageHeader {
+            title: "Workshop";
+            subtitle: "Job cards for every bike in for service or repair";
+            VerticalLayout {
+                alignment: center;
+                Segmented {
+                    items: ["Board", "All jobs"];
+                    current <=> WorkshopData.view;
+                    changed => {
+                        WorkshopData.refresh();
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "New job card";
+                    icon: Icons.plus;
+                    kind: ButtonKind.primary;
+                    clicked => {
+                        WorkshopData.open-new();
+                    }
+                }
+            }
+        }
+        if WorkshopData.view == 0 : HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 14px;
+            for col in WorkshopData.columns : Rectangle {
+                horizontal-stretch: 1;
+                preferred-width: 100px;
+                border-radius: Theme.radius-lg;
+                background: Theme.surface-3.transparentize(Theme.dark ? 0.4 : 0.2);
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 10px;
+                    HorizontalLayout {
+                        padding-left: 4px;
+                        padding-right: 4px;
+                        spacing: 8px;
+                        height: 28px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: Theme.tone-fg(WsUi.status-tone(col.code));
+                            }
+                        }
+                        Text {
+                            text: col.title;
+                            color: Theme.text;
+                            font-size: Theme.fs-md;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Badge {
+                                text: col.jobs.length;
+                                tone: WsUi.status-tone(col.code);
+                            }
+                        }
+                    }
+                    col-scroll := ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            width: col-scroll.visible-width;
+                            spacing: 10px;
+                            padding-bottom: 4px;
+                            alignment: start;
+                            for j in col.jobs : JobCardTile {
+                                j: j;
+                            }
+                            if col.jobs.length == 0 : Text {
+                                height: 60px;
+                                text: "Nothing here";
+                                color: Theme.muted;
+                                font-size: Theme.fs-sm;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if WorkshopData.view == 1 : VerticalLayout {
+            vertical-stretch: 1;
+            spacing: 12px;
+            Field {
+                icon: Icons.search;
+                placeholder: "Search job no., bike, number plate, customer…";
+                text <=> WorkshopData.search;
+                edited => {
+                    WorkshopData.refresh();
+                }
+            }
+            Card {
+                vertical-stretch: 1;
+                clip: true;
+                VerticalLayout {
+                    Rectangle {
+                        height: 40px;
+                        background: Theme.surface-2;
+                        HorizontalLayout {
+                            padding-left: 18px;
+                            padding-right: 12px;
+                            spacing: 12px;
+                            Th {
+                                width: 96px;
+                                text: "JOB";
+                            }
+                            Th {
+                                horizontal-stretch: 1;
+                                text: "BIKE / CUSTOMER";
+                            }
+                            Th {
+                                width: 130px;
+                                text: "STATUS";
+                            }
+                            Th {
+                                width: 120px;
+                                text: "TECHNICIAN";
+                            }
+                            Th {
+                                width: 110px;
+                                text: "OPENED";
+                            }
+                            Th {
+                                width: 100px;
+                                text: "TOTAL";
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                    if WorkshopData.history.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: Icons.wrench;
+                        title: "No jobs found";
+                    }
+                    if WorkshopData.history.length > 0 : ListView {
+                        vertical-stretch: 1;
+                        for j in WorkshopData.history : Rectangle {
+                            height: 56px;
+                            background: hta.has-hover ? Theme.hover : transparent;
+                            hta := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    WorkshopData.open-job(j.id);
+                                }
+                            }
+                            Rectangle {
+                                y: parent.height - 1px;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                            HorizontalLayout {
+                                padding-left: 18px;
+                                padding-right: 12px;
+                                spacing: 12px;
+                                Td {
+                                    width: 96px;
+                                    text: j.no;
+                                    text-color: Theme.accent;
+                                    font-weight: 700;
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: j.bike;
+                                        color: Theme.text;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: j.customer + " · " + j.complaint;
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-sm;
+                                        overflow: elide;
+                                    }
+                                }
+                                HorizontalLayout {
+                                    width: 130px;
+                                    alignment: start;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Badge {
+                                            text: j.status;
+                                            tone: WsUi.status-tone(j.status-code);
+                                            dot: true;
+                                        }
+                                    }
+                                }
+                                Td {
+                                    width: 120px;
+                                    text: j.tech != "" ? j.tech : "—";
+                                    text-color: Theme.text-2;
+                                }
+                                Td {
+                                    width: 110px;
+                                    text: j.age;
+                                    text-color: Theme.text-2;
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: j.total;
+                                    font-weight: 700;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if WorkshopData.show-new : NewJobDialog { }
+    if WorkshopData.show-job : JobDialog { }
+    if WorkshopData.show-deliver : DeliverDialog { }
+}

@@ -1,0 +1,1738 @@
+// Showroom: bikes (by chassis no.), selling with warranty, bookings with advance, models.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, TextArea, Select, Toggle, Button, ButtonKind, Icons, IconButton, Card, Badge, EmptyState, Th, Td, Divider, KeyValue, Modal, DialogFooter, Segmented, Notice, Label, PageHeader, Tabs } from "../widgets.slint";
+import { App } from "../globals.slint";
+import { CustomerPicker, ProductPicker } from "common.slint";
+
+export struct BikeRow {
+    id: int,
+    model: string,
+    chassis: string,
+    motor: string,
+    battery: string,
+    color: string,
+    year: string,
+    status: string,
+    status-code: int,
+    price: string,
+    cost: string,
+    customer: string,
+    phone: string,
+    reg: string,
+    sold-at: string,
+    invoice: string,
+    coupons: int,
+    booking: string,
+}
+
+export struct ModelCard {
+    id: int,
+    name: string,
+    brand: string,
+    price: string,
+    in-stock: int,
+    warranty: string,
+    services: string,
+}
+
+export struct BookingRow {
+    id: int,
+    no: string,
+    customer: string,
+    phone: string,
+    bike: string,
+    agreed: string,
+    advance: string,
+    balance: string,
+    expected: string,
+    created: string,
+    status: string,
+    open: bool,
+    has-bike: bool,
+}
+
+export struct ModelForm {
+    id: int,
+    name: string,
+    brand: string,
+    price: string,
+    cost: string,
+    vw: string,
+    bw: string,
+    mw: string,
+    km: string,
+    free: string,
+    active: bool,
+}
+
+export struct BikeForm {
+    id: int,
+    model: int,
+    chassis: string,
+    motor: string,
+    battery: string,
+    color: string,
+    year: string,
+    cost: string,
+    price: string,
+    status: int,
+    reg: string,
+    notes: string,
+}
+
+export struct SellLine {
+    product-id: int,
+    code: string,
+    name: string,
+    price: string,
+}
+
+export struct SellForm {
+    customer-id: int,
+    price: string,
+    discount: string,
+    cash: string,
+    bank: string,
+    bank-name: string,
+    reference: string,
+    reg: string,
+    notes: string,
+}
+
+export struct BookForm {
+    customer-id: int,
+    model: int,
+    agreed: string,
+    expected: string,
+    color: string,
+    cash: string,
+    bank: string,
+    bank-name: string,
+    reference: string,
+    notes: string,
+}
+
+export struct InfoPair {
+    label: string,
+    value: string,
+    tone: int,
+}
+
+export struct HistRow {
+    title: string,
+    sub: string,
+    right: string,
+    badge: string,
+}
+
+export global VehiclesData {
+    in-out property <int> tab: 0;
+    in-out property <[BikeRow]> rows;
+    in-out property <[ModelCard]> models;
+    in-out property <[string]> model-names;
+    in-out property <string> search;
+    in-out property <int> status-filter: 0;
+    in-out property <[BookingRow]> bookings;
+    in-out property <int> booking-filter: 0;
+
+    in-out property <bool> show-bike-form;
+    in-out property <BikeForm> bike-form;
+    in-out property <string> bike-error;
+
+    in-out property <bool> show-model-form;
+    in-out property <ModelForm> model-form;
+    in-out property <string> model-error;
+
+    // selling
+    in-out property <bool> show-sell;
+    in-out property <BikeRow> sell-bike;
+    in-out property <int> sell-customer-id;
+    in-out property <string> sell-customer-name;
+    in-out property <string> sell-customer-phone;
+    in-out property <string> sell-booking;
+    in-out property <string> sell-advance;
+    in-out property <bool> sell-has-advance;
+    in-out property <string> sell-price;
+    in-out property <[SellLine]> sell-lines;
+    in-out property <string> sell-error;
+    in-out property <bool> show-sell-done;
+    in-out property <string> done-invoice;
+    in-out property <string> done-total;
+    in-out property <string> done-balance;
+    in-out property <bool> done-has-balance;
+    in-out property <[InfoPair]> done-warranty;
+
+    // booking
+    in-out property <bool> show-book;
+    in-out property <BikeRow> book-bike;
+    in-out property <bool> book-has-bike;
+    in-out property <string> book-price;
+    in-out property <string> book-error;
+
+    // booking payment / cancel
+    in-out property <bool> show-booking-pay;
+    in-out property <int> booking-pay-id;
+    in-out property <string> booking-pay-title;
+    in-out property <string> booking-pay-error;
+    in-out property <bool> show-cancel;
+    in-out property <int> cancel-id;
+    in-out property <string> cancel-title;
+    in-out property <string> cancel-advance;
+
+    // detail
+    in-out property <bool> show-detail;
+    in-out property <string> detail-title;
+    in-out property <string> detail-sub;
+    in-out property <int> detail-id;
+    in-out property <[InfoPair]> detail-info;
+    in-out property <[InfoPair]> detail-warranty;
+    in-out property <[HistRow]> detail-history;
+    in-out property <string> detail-reg;
+    in-out property <bool> detail-sold;
+
+    callback refresh();
+    callback new-bike();
+    callback edit-bike(int);
+    callback model-prices(int) -> [string];
+    callback save-bike(BikeForm) -> bool;
+    callback new-model();
+    callback edit-model(int);
+    callback save-model(ModelForm) -> bool;
+    callback open-sell(int);
+    callback sell-add(int);
+    callback sell-remove(int);
+    pure callback sell-summary(SellForm) -> [InfoPair];
+    callback complete-sale(SellForm) -> bool;
+    callback open-book(int);
+    callback open-book-model();
+    callback save-booking(BookForm) -> bool;
+    callback open-booking-pay(int);
+    callback save-booking-pay(int, string, string, string) -> bool;
+    callback open-cancel(int);
+    callback confirm-cancel(int);
+    callback deliver-booking(int);
+    callback open-detail(int);
+    callback save-reg(string);
+    callback print-invoice();
+}
+
+global VehicleUi {
+    public pure function status-tone(code: int) -> Tone {
+        if code == 0 { return Tone.success; }
+        if code == 1 { return Tone.warn; }
+        if code == 2 { return Tone.info; }
+        if code == 3 { return Tone.violet; }
+        return Tone.neutral;
+    }
+}
+
+component ModelChip inherits Rectangle {
+    in property <ModelCard> m;
+    height: 74px;
+    width: 210px;
+    border-radius: Theme.radius-lg;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+        Rectangle {
+            width: 46px;
+            border-radius: 12px;
+            background: Theme.info-soft;
+            Image {
+                source: Icons.scooter;
+                width: 24px;
+                height: 24px;
+                colorize: Theme.info;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.m.name;
+                color: Theme.text;
+                font-size: Theme.fs-md;
+                font-weight: 700;
+                overflow: elide;
+            }
+            Text {
+                text: root.m.in-stock == 0 ? "None in showroom" : root.m.in-stock + " in showroom";
+                color: root.m.in-stock == 0 ? Theme.danger : Theme.success;
+                font-size: Theme.fs-sm;
+                font-weight: 600;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component BikeRowView inherits Rectangle {
+    in property <BikeRow> b;
+    height: 60px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            VehiclesData.open-detail(root.b.id);
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 12px;
+        spacing: 12px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.b.model + (root.b.color != "" ? " · " + root.b.color : "");
+                color: Theme.text;
+                font-size: Theme.fs-md;
+                font-weight: 700;
+                overflow: elide;
+            }
+            Text {
+                text: "Chassis " + root.b.chassis;
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            width: 150px;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: "Motor " + root.b.motor;
+                color: Theme.text-2;
+                font-size: Theme.fs-sm;
+                overflow: elide;
+            }
+            Text {
+                text: "Battery " + root.b.battery;
+                color: Theme.text-2;
+                font-size: Theme.fs-sm;
+                overflow: elide;
+            }
+        }
+        HorizontalLayout {
+            width: 104px;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                Badge {
+                    text: root.b.status;
+                    tone: VehicleUi.status-tone(root.b.status-code);
+                    dot: true;
+                }
+            }
+        }
+        VerticalLayout {
+            width: 150px;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.b.customer != "" ? root.b.customer : "—";
+                color: root.b.customer != "" ? Theme.text : Theme.muted;
+                font-size: Theme.fs;
+                font-weight: 600;
+                overflow: elide;
+            }
+            if root.b.customer != "" : Text {
+                text: root.b.status-code == 2 ? "Sold " + root.b.sold-at : root.b.booking;
+                color: Theme.muted;
+                font-size: Theme.fs-xs;
+                overflow: elide;
+            }
+        }
+        Td {
+            width: 104px;
+            text: root.b.price;
+            font-weight: 700;
+            horizontal-alignment: right;
+        }
+        VerticalLayout {
+            width: 150px;
+            alignment: center;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: end;
+                if (root.b.status-code == 0 || root.b.status-code == 3) && App.perms.sell-vehicles : Button {
+                    text: "Sell";
+                    kind: ButtonKind.primary;
+                    small: true;
+                    clicked => {
+                        VehiclesData.open-sell(root.b.id);
+                    }
+                }
+                if (root.b.status-code == 0 || root.b.status-code == 3 || root.b.status-code == 4) && App.perms.sell-vehicles : Button {
+                    text: "Book";
+                    small: true;
+                    clicked => {
+                        VehiclesData.open-book(root.b.id);
+                    }
+                }
+                if root.b.status-code == 1 && App.perms.sell-vehicles : Button {
+                    text: "Deliver";
+                    kind: ButtonKind.primary;
+                    small: true;
+                    clicked => {
+                        VehiclesData.open-sell(root.b.id);
+                    }
+                }
+                if root.b.status-code != 2 && App.perms.edit-products : IconButton {
+                    icon: Icons.edit;
+                    clicked => {
+                        VehiclesData.edit-bike(root.b.id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+component BikeFormDialog inherits Modal {
+    property <int> id: VehiclesData.bike-form.id;
+    property <int> model: VehiclesData.bike-form.model;
+    property <string> chassis: VehiclesData.bike-form.chassis;
+    property <string> motor: VehiclesData.bike-form.motor;
+    property <string> battery: VehiclesData.bike-form.battery;
+    property <string> f-color: VehiclesData.bike-form.color;
+    property <string> year: VehiclesData.bike-form.year;
+    property <string> cost: VehiclesData.bike-form.cost;
+    property <string> price: VehiclesData.bike-form.price;
+    property <int> status: VehiclesData.bike-form.status;
+    property <string> reg: VehiclesData.bike-form.reg;
+    property <string> notes: VehiclesData.bike-form.notes;
+    title: root.id == 0 ? "Add bike to stock" : "Edit bike";
+    subtitle: "Every bike is tracked by its chassis, motor and battery numbers.";
+    dialog-width: 680px;
+    close => {
+        VehiclesData.show-bike-form = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            Select {
+                label: "Model *";
+                placeholder: "Choose model";
+                model: VehiclesData.model-names;
+                current-index <=> root.model;
+                selected(i) => {
+                    if root.id == 0 {
+                        let p = VehiclesData.model-prices(i);
+                        root.price = p[0];
+                        root.cost = p[1];
+                    }
+                }
+            }
+            Select {
+                label: "Status";
+                model: ["In stock", "In transit", "Demo bike"];
+                current-index <=> root.status;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Chassis number *";
+                text <=> root.chassis;
+            }
+            Field {
+                label: "Motor number";
+                text <=> root.motor;
+            }
+            Field {
+                label: "Battery serial";
+                text <=> root.battery;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Colour";
+                text <=> root.f-color;
+            }
+            Field {
+                label: "Year";
+                input-type: InputType.number;
+                text <=> root.year;
+            }
+            Field {
+                label: "Registration no.";
+                placeholder: "If already registered";
+                text <=> root.reg;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            if App.perms.view-cost : Field {
+                label: "Cost price";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                text <=> root.cost;
+            }
+            Field {
+                label: "Sale price";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                text <=> root.price;
+            }
+        }
+        Field {
+            label: "Notes";
+            text <=> root.notes;
+        }
+        if VehiclesData.bike-error != "" : Notice {
+            text: VehiclesData.bike-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                VehiclesData.show-bike-form = false;
+            }
+        }
+        Button {
+            text: root.id == 0 ? "Add to stock" : "Save";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                VehiclesData.save-bike({
+                    id: root.id,
+                    model: root.model,
+                    chassis: root.chassis,
+                    motor: root.motor,
+                    battery: root.battery,
+                    color: root.f-color,
+                    year: root.year,
+                    cost: root.cost,
+                    price: root.price,
+                    status: root.status,
+                    reg: root.reg,
+                    notes: root.notes,
+                });
+            }
+        }
+    }
+}
+
+component ModelFormDialog inherits Modal {
+    property <int> id: VehiclesData.model-form.id;
+    property <string> name: VehiclesData.model-form.name;
+    property <string> brand: VehiclesData.model-form.brand;
+    property <string> price: VehiclesData.model-form.price;
+    property <string> cost: VehiclesData.model-form.cost;
+    property <string> vw: VehiclesData.model-form.vw;
+    property <string> bw: VehiclesData.model-form.bw;
+    property <string> mw: VehiclesData.model-form.mw;
+    property <string> km: VehiclesData.model-form.km;
+    property <string> free: VehiclesData.model-form.free;
+    property <bool> active: VehiclesData.model-form.active;
+    title: root.id == 0 ? "New model" : "Edit model";
+    subtitle: "Default price, warranty and free services for this model.";
+    dialog-width: 640px;
+    close => {
+        VehiclesData.show-model-form = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Model name *";
+                placeholder: "e.g. Spark S1";
+                text <=> root.name;
+            }
+            Field {
+                label: "Brand";
+                text <=> root.brand;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Sale price";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                text <=> root.price;
+            }
+            if App.perms.view-cost : Field {
+                label: "Usual cost price";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                text <=> root.cost;
+            }
+        }
+        Label {
+            text: "WARRANTY (MONTHS)";
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Vehicle";
+                input-type: InputType.number;
+                text <=> root.vw;
+            }
+            Field {
+                label: "Battery";
+                input-type: InputType.number;
+                text <=> root.bw;
+            }
+            Field {
+                label: "Motor";
+                input-type: InputType.number;
+                text <=> root.mw;
+            }
+            Field {
+                label: "Up to km";
+                input-type: InputType.number;
+                text <=> root.km;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Free services with each bike";
+                input-type: InputType.number;
+                text <=> root.free;
+                hint: "Coupons are created automatically when the bike is sold.";
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Toggle {
+                    text: "Currently sold";
+                    checked <=> root.active;
+                }
+            }
+        }
+        if VehiclesData.model-error != "" : Notice {
+            text: VehiclesData.model-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                VehiclesData.show-model-form = false;
+            }
+        }
+        Button {
+            text: "Save model";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                VehiclesData.save-model({
+                    id: root.id,
+                    name: root.name,
+                    brand: root.brand,
+                    price: root.price,
+                    cost: root.cost,
+                    vw: root.vw,
+                    bw: root.bw,
+                    mw: root.mw,
+                    km: root.km,
+                    free: root.free,
+                    active: root.active,
+                });
+            }
+        }
+    }
+}
+
+component BikeSummary inherits Rectangle {
+    in property <BikeRow> b;
+    border-radius: Theme.radius-lg;
+    background: @linear-gradient(135deg, #0c1424 0%, #123a40 100%);
+    height: 112px;
+    HorizontalLayout {
+        padding: 16px;
+        spacing: 14px;
+        Rectangle {
+            width: 64px;
+            border-radius: 14px;
+            background: #ffffff14;
+            Image {
+                source: Icons.scooter;
+                width: 34px;
+                height: 34px;
+                colorize: #5eead4;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 4px;
+            Text {
+                text: root.b.model;
+                color: #ffffff;
+                font-size: Theme.fs-xl;
+                font-weight: 800;
+            }
+            Text {
+                text: root.b.color + (root.b.year != "" ? " · " + root.b.year : "");
+                color: #a8b5ca;
+                font-size: Theme.fs;
+            }
+            Text {
+                text: "Chassis " + root.b.chassis + "  ·  Motor " + root.b.motor + "  ·  Battery " + root.b.battery;
+                color: #cfe9e5;
+                font-size: Theme.fs-sm;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component SellDialog inherits Modal {
+    property <string> price: VehiclesData.sell-price;
+    property <string> discount;
+    property <string> cash;
+    property <string> bank;
+    property <string> bank-name;
+    property <string> reference;
+    property <string> reg;
+    property <SellForm> form: {
+        customer-id: VehiclesData.sell-customer-id,
+        price: root.price,
+        discount: root.discount,
+        cash: root.cash,
+        bank: root.bank,
+        bank-name: root.bank-name,
+        reference: root.reference,
+        reg: root.reg,
+        notes: "",
+    };
+    property <[InfoPair]> summary: VehiclesData.sell-summary(root.form);
+    title: VehiclesData.sell-booking != "" ? "Deliver booked bike" : "Sell bike";
+    subtitle: VehiclesData.sell-booking != "" ? "Booking " + VehiclesData.sell-booking : "Warranty and free-service coupons are registered automatically.";
+    dialog-width: 960px;
+    close => {
+        VehiclesData.show-sell = false;
+    }
+    ScrollView {
+        height: min(600px, body.preferred-height);
+        body := HorizontalLayout {
+            padding: 22px;
+            padding-top: 8px;
+            spacing: 22px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 14px;
+                BikeSummary {
+                    b: VehiclesData.sell-bike;
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Bike price";
+                        prefix: App.currency;
+                        input-type: InputType.decimal;
+                        enabled: App.perms.discounts;
+                        text <=> root.price;
+                    }
+                    if App.perms.discounts : Field {
+                        label: "Discount";
+                        prefix: App.currency;
+                        input-type: InputType.decimal;
+                        placeholder: "0";
+                        text <=> root.discount;
+                    }
+                }
+                Label {
+                    text: "Accessories with the bike (optional)";
+                }
+                ProductPicker {
+                    placeholder: "Add helmet, cover… by code or name";
+                    picked(id) => {
+                        VehiclesData.sell-add(id);
+                    }
+                }
+                for l[i] in VehiclesData.sell-lines : Rectangle {
+                    height: 40px;
+                    border-radius: Theme.radius-sm;
+                    background: Theme.surface-2;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 4px;
+                        spacing: 10px;
+                        Td {
+                            width: 76px;
+                            text: l.code;
+                            text-color: Theme.accent;
+                            font-weight: 700;
+                        }
+                        Td {
+                            horizontal-stretch: 1;
+                            text: l.name;
+                        }
+                        Td {
+                            text: l.price;
+                            font-weight: 600;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: Icons.x;
+                                clicked => {
+                                    VehiclesData.sell-remove(i);
+                                }
+                            }
+                        }
+                    }
+                }
+                Field {
+                    label: "Registration / number plate (if known)";
+                    text <=> root.reg;
+                }
+            }
+            VerticalLayout {
+                width: 380px;
+                spacing: 14px;
+                CustomerPicker {
+                    label: "Customer *";
+                    customer-id <=> VehiclesData.sell-customer-id;
+                    customer-name <=> VehiclesData.sell-customer-name;
+                    customer-phone <=> VehiclesData.sell-customer-phone;
+                    allow-clear: VehiclesData.sell-booking == "";
+                }
+                if VehiclesData.sell-has-advance : Notice {
+                    tone: Tone.info;
+                    text: "Advance already paid: " + VehiclesData.sell-advance;
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Cash now";
+                        prefix: App.currency;
+                        input-type: InputType.decimal;
+                        placeholder: "0";
+                        text <=> root.cash;
+                    }
+                    Field {
+                        label: "Bank transfer now";
+                        prefix: App.currency;
+                        input-type: InputType.decimal;
+                        placeholder: "0";
+                        text <=> root.bank;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Bank";
+                        placeholder: "e.g. Meezan";
+                        text <=> root.bank-name;
+                    }
+                    Field {
+                        label: "Reference";
+                        placeholder: "Optional";
+                        text <=> root.reference;
+                    }
+                }
+                Rectangle {
+                    border-radius: Theme.radius-lg;
+                    background: Theme.surface-2;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 10px;
+                        for s in root.summary : KeyValue {
+                            key: s.label;
+                            value: s.value;
+                            strong: s.tone == 9;
+                            value-color: s.tone == 1 ? Theme.danger : s.tone == 2 ? Theme.success : Theme.text;
+                        }
+                    }
+                }
+                if VehiclesData.sell-error != "" : Notice {
+                    text: VehiclesData.sell-error;
+                }
+            }
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                VehiclesData.show-sell = false;
+            }
+        }
+        Button {
+            text: "Complete sale";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            large: true;
+            clicked => {
+                VehiclesData.complete-sale(root.form);
+            }
+        }
+    }
+}
+
+component SellDoneDialog inherits Modal {
+    title: "Bike sold 🎉";
+    subtitle: "Invoice " + VehiclesData.done-invoice + " · " + VehiclesData.done-total;
+    dialog-width: 520px;
+    close => {
+        VehiclesData.show-sell-done = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 12px;
+        Text {
+            text: "Warranty registered";
+            color: Theme.text;
+            font-size: Theme.fs-md;
+            font-weight: 700;
+        }
+        for w in VehiclesData.done-warranty : Rectangle {
+            height: 44px;
+            border-radius: Theme.radius-sm;
+            background: Theme.success-soft;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    Image {
+                        source: Icons.shield;
+                        width: 18px;
+                        height: 18px;
+                        colorize: Theme.success;
+                    }
+                }
+                Text {
+                    text: w.label;
+                    color: Theme.text;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: w.value;
+                    color: Theme.success;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        if VehiclesData.done-has-balance : Notice {
+            tone: Tone.warn;
+            text: "Balance still due: " + VehiclesData.done-balance + " (on the customer's account).";
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Print invoice";
+            icon: Icons.printer;
+            clicked => {
+                VehiclesData.print-invoice();
+            }
+        }
+        Button {
+            text: "Done";
+            kind: ButtonKind.primary;
+            clicked => {
+                VehiclesData.show-sell-done = false;
+            }
+        }
+    }
+}
+
+component BookDialog inherits Modal {
+    property <int> customer-id;
+    property <string> customer-name;
+    property <string> customer-phone;
+    property <int> model: -1;
+    property <string> agreed: VehiclesData.book-price;
+    property <string> expected;
+    property <string> f-color: VehiclesData.book-bike.color;
+    property <string> cash;
+    property <string> bank;
+    property <string> bank-name;
+    property <string> reference;
+    property <string> notes;
+    title: "Book a bike";
+    subtitle: "Take an advance now and deliver later.";
+    dialog-width: 760px;
+    close => {
+        VehiclesData.show-book = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        if VehiclesData.book-has-bike : BikeSummary {
+            b: VehiclesData.book-bike;
+        }
+        if !VehiclesData.book-has-bike : Select {
+            label: "Model *";
+            placeholder: "Choose model";
+            model: VehiclesData.model-names;
+            current-index <=> root.model;
+            selected(i) => {
+                root.agreed = VehiclesData.model-prices(i)[0];
+            }
+        }
+        CustomerPicker {
+            label: "Customer *";
+            customer-id <=> root.customer-id;
+            customer-name <=> root.customer-name;
+            customer-phone <=> root.customer-phone;
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Agreed price";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                text <=> root.agreed;
+            }
+            Field {
+                label: "Expected delivery";
+                placeholder: "YYYY-MM-DD";
+                text <=> root.expected;
+            }
+            Field {
+                label: "Colour wanted";
+                text <=> root.f-color;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Advance in cash";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                placeholder: "0";
+                text <=> root.cash;
+            }
+            Field {
+                label: "Advance by bank";
+                prefix: App.currency;
+                input-type: InputType.decimal;
+                placeholder: "0";
+                text <=> root.bank;
+            }
+            Field {
+                label: "Bank / reference";
+                placeholder: "Optional";
+                text <=> root.reference;
+            }
+        }
+        Field {
+            label: "Notes";
+            placeholder: "e.g. wants number plate done by the shop";
+            text <=> root.notes;
+        }
+        if VehiclesData.book-error != "" : Notice {
+            text: VehiclesData.book-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                VehiclesData.show-book = false;
+            }
+        }
+        Button {
+            text: "Save booking";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                VehiclesData.save-booking({
+                    customer-id: root.customer-id,
+                    model: root.model,
+                    agreed: root.agreed,
+                    expected: root.expected,
+                    color: root.f-color,
+                    cash: root.cash,
+                    bank: root.bank,
+                    bank-name: root.reference,
+                    reference: root.reference,
+                    notes: root.notes,
+                });
+            }
+        }
+    }
+}
+
+component BookingPayDialog inherits Modal {
+    property <int> method: 0;
+    property <string> amount;
+    property <string> reference;
+    title: "Add payment to booking";
+    subtitle: VehiclesData.booking-pay-title;
+    dialog-width: 480px;
+    close => {
+        VehiclesData.show-booking-pay = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Segmented {
+            fill: true;
+            items: ["Cash", "Bank transfer"];
+            current <=> root.method;
+        }
+        Field {
+            label: "Amount";
+            prefix: App.currency;
+            input-type: InputType.decimal;
+            text <=> root.amount;
+            field-height: 46px;
+            font-size: 18px;
+        }
+        if root.method == 1 : Field {
+            label: "Bank / reference";
+            text <=> root.reference;
+        }
+        if VehiclesData.booking-pay-error != "" : Notice {
+            text: VehiclesData.booking-pay-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                VehiclesData.show-booking-pay = false;
+            }
+        }
+        Button {
+            text: "Save payment";
+            kind: ButtonKind.primary;
+            icon: Icons.check;
+            clicked => {
+                VehiclesData.save-booking-pay(root.method, root.amount, root.reference, "");
+            }
+        }
+    }
+}
+
+component CancelDialog inherits Modal {
+    property <int> refund: 0;
+    title: "Cancel booking";
+    subtitle: VehiclesData.cancel-title;
+    dialog-width: 480px;
+    close => {
+        VehiclesData.show-cancel = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Text {
+            text: "Advance paid: " + VehiclesData.cancel-advance + ". What happens to it?";
+            color: Theme.text;
+            font-size: Theme.fs-md;
+            wrap: word-wrap;
+        }
+        Segmented {
+            fill: true;
+            items: ["Refund in cash", "Refund by bank", "Keep advance"];
+            current <=> root.refund;
+        }
+        Notice {
+            tone: Tone.warn;
+            text: "The bike goes back to stock. This can't be undone.";
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Keep booking";
+            kind: ButtonKind.ghost;
+            clicked => {
+                VehiclesData.show-cancel = false;
+            }
+        }
+        Button {
+            text: "Cancel booking";
+            kind: ButtonKind.danger;
+            clicked => {
+                VehiclesData.confirm-cancel(root.refund);
+            }
+        }
+    }
+}
+
+component DetailDialog inherits Modal {
+    property <string> reg: VehiclesData.detail-reg;
+    title: VehiclesData.detail-title;
+    subtitle: VehiclesData.detail-sub;
+    dialog-width: 760px;
+    close => {
+        VehiclesData.show-detail = false;
+    }
+    ScrollView {
+        height: min(560px, body.preferred-height);
+        body := VerticalLayout {
+            padding: 22px;
+            padding-top: 8px;
+            spacing: 16px;
+            GridLayout {
+                spacing: 10px;
+                for p[i] in VehiclesData.detail-info : Rectangle {
+                    col: Math.mod(i, 3);
+                    row: i / 3;
+                    height: 58px;
+                    border-radius: Theme.radius;
+                    background: Theme.surface-2;
+                    VerticalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        alignment: center;
+                        spacing: 2px;
+                        Text {
+                            text: p.label;
+                            color: Theme.muted;
+                            font-size: Theme.fs-xs;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: p.value != "" ? p.value : "—";
+                            color: Theme.text;
+                            font-size: Theme.fs-md;
+                            font-weight: 600;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+            if VehiclesData.detail-sold : HorizontalLayout {
+                spacing: 10px;
+                Field {
+                    label: "Registration / number plate";
+                    text <=> root.reg;
+                }
+                VerticalLayout {
+                    alignment: end;
+                    Button {
+                        text: "Save";
+                        kind: ButtonKind.soft;
+                        clicked => {
+                            VehiclesData.save-reg(root.reg);
+                        }
+                    }
+                }
+            }
+            if VehiclesData.detail-warranty.length > 0 : VerticalLayout {
+                spacing: 8px;
+                Text {
+                    text: "Warranty & free services";
+                    color: Theme.text;
+                    font-size: Theme.fs-lg;
+                    font-weight: 700;
+                }
+                for w in VehiclesData.detail-warranty : Rectangle {
+                    height: 42px;
+                    border-radius: Theme.radius-sm;
+                    background: w.tone == 1 ? Theme.danger-soft : Theme.success-soft;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: Icons.shield;
+                                width: 16px;
+                                height: 16px;
+                                colorize: w.tone == 1 ? Theme.danger : Theme.success;
+                            }
+                        }
+                        Text {
+                            text: w.label;
+                            color: Theme.text;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: w.value;
+                            color: w.tone == 1 ? Theme.danger : Theme.success;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 8px;
+                Text {
+                    text: "Service history";
+                    color: Theme.text;
+                    font-size: Theme.fs-lg;
+                    font-weight: 700;
+                }
+                if VehiclesData.detail-history.length == 0 : Text {
+                    text: "No workshop visits yet.";
+                    color: Theme.muted;
+                }
+                for h in VehiclesData.detail-history : Rectangle {
+                    height: 52px;
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: h.title;
+                                color: Theme.text;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: h.sub;
+                                color: Theme.muted;
+                                font-size: Theme.fs-sm;
+                                overflow: elide;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Badge {
+                                text: h.badge;
+                                tone: Tone.violet;
+                            }
+                        }
+                        Text {
+                            width: 100px;
+                            text: h.right;
+                            color: Theme.text;
+                            font-weight: 700;
+                            horizontal-alignment: right;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component VehiclesScreen inherits Rectangle {
+    background: Theme.bg;
+    VerticalLayout {
+        padding: 24px;
+        spacing: 14px;
+        PageHeader {
+            title: "Vehicles";
+            subtitle: "Showroom stock, sales and bookings";
+            if App.perms.sell-vehicles && VehiclesData.tab == 1 : VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "New booking";
+                    icon: Icons.calendar;
+                    clicked => {
+                        VehiclesData.open-book-model();
+                    }
+                }
+            }
+            if App.perms.edit-products && VehiclesData.tab == 2 : VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "New model";
+                    icon: Icons.plus;
+                    kind: ButtonKind.primary;
+                    clicked => {
+                        VehiclesData.new-model();
+                    }
+                }
+            }
+            if App.perms.edit-products && VehiclesData.tab == 0 : VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "Add bike";
+                    icon: Icons.plus;
+                    kind: ButtonKind.primary;
+                    clicked => {
+                        VehiclesData.new-bike();
+                    }
+                }
+            }
+        }
+        Tabs {
+            items: ["Bikes", "Bookings", "Models"];
+            current <=> VehiclesData.tab;
+            changed => {
+                VehiclesData.refresh();
+            }
+        }
+
+        // ------------------------------------------------ bikes
+        if VehiclesData.tab == 0 : VerticalLayout {
+            spacing: 14px;
+            vertical-stretch: 1;
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                for m in VehiclesData.models : ModelChip {
+                    m: m;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Field {
+                    icon: Icons.search;
+                    placeholder: "Search chassis, motor, battery, model, customer…";
+                    text <=> VehiclesData.search;
+                    edited => {
+                        VehiclesData.refresh();
+                    }
+                }
+                Segmented {
+                    items: ["Showroom", "In stock", "Booked", "Demo", "In transit", "Sold"];
+                    current <=> VehiclesData.status-filter;
+                    changed => {
+                        VehiclesData.refresh();
+                    }
+                }
+            }
+            Card {
+                vertical-stretch: 1;
+                clip: true;
+                VerticalLayout {
+                    Rectangle {
+                        height: 40px;
+                        background: Theme.surface-2;
+                        HorizontalLayout {
+                            padding-left: 18px;
+                            padding-right: 12px;
+                            spacing: 12px;
+                            Th {
+                                horizontal-stretch: 1;
+                                text: "BIKE";
+                            }
+                            Th {
+                                width: 150px;
+                                text: "MOTOR / BATTERY";
+                            }
+                            Th {
+                                width: 104px;
+                                text: "STATUS";
+                            }
+                            Th {
+                                width: 150px;
+                                text: "CUSTOMER";
+                            }
+                            Th {
+                                width: 104px;
+                                text: "PRICE";
+                                horizontal-alignment: right;
+                            }
+                            Rectangle {
+                                width: 150px;
+                            }
+                        }
+                    }
+                    if VehiclesData.rows.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: Icons.scooter;
+                        title: "No bikes here";
+                        text: "Add bikes to stock with “Add bike”, or change the filter.";
+                    }
+                    if VehiclesData.rows.length > 0 : ListView {
+                        vertical-stretch: 1;
+                        for b in VehiclesData.rows : BikeRowView {
+                            b: b;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------ bookings
+        if VehiclesData.tab == 1 : VerticalLayout {
+            spacing: 14px;
+            vertical-stretch: 1;
+            HorizontalLayout {
+                alignment: start;
+                Segmented {
+                    items: ["Open", "Delivered", "Cancelled", "All"];
+                    current <=> VehiclesData.booking-filter;
+                    changed => {
+                        VehiclesData.refresh();
+                    }
+                }
+            }
+            Card {
+                vertical-stretch: 1;
+                clip: true;
+                VerticalLayout {
+                    Rectangle {
+                        height: 40px;
+                        background: Theme.surface-2;
+                        HorizontalLayout {
+                            padding-left: 18px;
+                            padding-right: 12px;
+                            spacing: 12px;
+                            Th {
+                                width: 100px;
+                                text: "BOOKING";
+                            }
+                            Th {
+                                horizontal-stretch: 1;
+                                text: "CUSTOMER / BIKE";
+                            }
+                            Th {
+                                width: 100px;
+                                text: "AGREED";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 100px;
+                                text: "ADVANCE";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 100px;
+                                text: "BALANCE";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 100px;
+                                text: "EXPECTED";
+                            }
+                            Rectangle {
+                                width: 230px;
+                            }
+                        }
+                    }
+                    if VehiclesData.bookings.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: Icons.calendar;
+                        title: "No bookings";
+                        text: "Book a bike from the Bikes tab or with “New booking”.";
+                    }
+                    if VehiclesData.bookings.length > 0 : ListView {
+                        vertical-stretch: 1;
+                        for b in VehiclesData.bookings : Rectangle {
+                            height: 60px;
+                            Rectangle {
+                                y: parent.height - 1px;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                            HorizontalLayout {
+                                padding-left: 18px;
+                                padding-right: 12px;
+                                spacing: 12px;
+                                VerticalLayout {
+                                    width: 100px;
+                                    alignment: center;
+                                    spacing: 3px;
+                                    Text {
+                                        text: b.no;
+                                        color: Theme.accent;
+                                        font-weight: 700;
+                                    }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        Badge {
+                                            text: b.status;
+                                            tone: b.open ? Tone.warn : b.status == "Delivered" ? Tone.success : Tone.neutral;
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text {
+                                        text: b.customer + (b.phone != "" ? " · " + b.phone : "");
+                                        color: Theme.text;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: b.bike;
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-sm;
+                                        overflow: elide;
+                                    }
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: b.agreed;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: b.advance;
+                                    text-color: Theme.success;
+                                    font-weight: 600;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: b.balance;
+                                    font-weight: 700;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: b.expected;
+                                    text-color: Theme.text-2;
+                                }
+                                VerticalLayout {
+                                    width: 230px;
+                                    alignment: center;
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: end;
+                                        if b.open : Button {
+                                            text: "Payment";
+                                            small: true;
+                                            clicked => {
+                                                VehiclesData.open-booking-pay(b.id);
+                                            }
+                                        }
+                                        if b.open : Button {
+                                            text: b.has-bike ? "Deliver" : "Pick bike";
+                                            small: true;
+                                            kind: ButtonKind.primary;
+                                            clicked => {
+                                                VehiclesData.deliver-booking(b.id);
+                                            }
+                                        }
+                                        if b.open : IconButton {
+                                            icon: Icons.x;
+                                            tint: Theme.danger;
+                                            clicked => {
+                                                VehiclesData.open-cancel(b.id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------ models
+        if VehiclesData.tab == 2 : ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 14px;
+                alignment: start;
+                if VehiclesData.models.length == 0 : EmptyState {
+                    icon: Icons.scooter;
+                    title: "No models yet";
+                    text: "Add the models you sell with “New model”.";
+                }
+                for m in VehiclesData.models : Card {
+                    height: 92px;
+                    HorizontalLayout {
+                        padding: 16px;
+                        spacing: 16px;
+                        Rectangle {
+                            width: 60px;
+                            border-radius: 14px;
+                            background: Theme.info-soft;
+                            Image {
+                                source: Icons.scooter;
+                                width: 30px;
+                                height: 30px;
+                                colorize: Theme.info;
+                            }
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 3px;
+                            Text {
+                                text: m.name + (m.brand != "" ? " · " + m.brand : "");
+                                color: Theme.text;
+                                font-size: Theme.fs-lg;
+                                font-weight: 800;
+                            }
+                            Text {
+                                text: m.warranty;
+                                color: Theme.text-2;
+                                font-size: Theme.fs;
+                            }
+                            Text {
+                                text: m.services;
+                                color: Theme.muted;
+                                font-size: Theme.fs-sm;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 3px;
+                            Text {
+                                text: m.price;
+                                color: Theme.text;
+                                font-size: Theme.fs-lg;
+                                font-weight: 800;
+                                horizontal-alignment: right;
+                            }
+                            Text {
+                                text: m.in-stock + " in showroom";
+                                color: m.in-stock == 0 ? Theme.danger : Theme.muted;
+                                font-size: Theme.fs-sm;
+                                horizontal-alignment: right;
+                            }
+                        }
+                        if App.perms.edit-products : VerticalLayout {
+                            alignment: center;
+                            Button {
+                                text: "Edit";
+                                icon: Icons.edit;
+                                small: true;
+                                clicked => {
+                                    VehiclesData.edit-model(m.id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if VehiclesData.show-bike-form : BikeFormDialog { }
+    if VehiclesData.show-model-form : ModelFormDialog { }
+    if VehiclesData.show-sell : SellDialog { }
+    if VehiclesData.show-sell-done : SellDoneDialog { }
+    if VehiclesData.show-book : BookDialog { }
+    if VehiclesData.show-booking-pay : BookingPayDialog { }
+    if VehiclesData.show-cancel : CancelDialog { }
+    if VehiclesData.show-detail : DetailDialog { }
+}

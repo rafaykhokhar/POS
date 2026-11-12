@@ -1,0 +1,359 @@
+// Pickers shared by several screens.
+
+import { Theme, Tone } from "../theme.slint";
+import { Field, Button, ButtonKind, Icons, Avatar, Badge, IconButton, StockPill, Label } from "../widgets.slint";
+import { CustomerSearch, CustomerHit, ProductLookup, ProductHit } from "../globals.slint";
+
+// Search existing customers or add a new one inline.
+export component CustomerPicker inherits VerticalLayout {
+    in-out property <int> customer-id: 0;
+    in-out property <string> customer-name;
+    in-out property <string> customer-phone;
+    in-out property <string> customer-balance;
+    in-out property <bool> customer-owing;
+    in property <string> label: "Customer";
+    in property <bool> allow-clear: true;
+    in property <string> empty-text: "Search by name or phone…";
+    callback changed(int);
+    property <string> query;
+    property <bool> adding: false;
+    property <string> n-name;
+    property <string> n-phone;
+    property <string> n-idno;
+    property <string> n-address;
+    spacing: 6px;
+
+    if root.label != "" : Label {
+        text: root.label;
+    }
+
+    // Selected customer card
+    if root.customer-id > 0 : Rectangle {
+        height: 58px;
+        border-radius: Theme.radius;
+        background: Theme.accent-soft;
+        border-width: 1px;
+        border-color: Theme.accent.transparentize(0.7);
+        HorizontalLayout {
+            padding: 10px;
+            spacing: 10px;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 18px;
+                background: Theme.surface;
+                Image {
+                    source: Icons.user;
+                    width: 18px;
+                    height: 18px;
+                    colorize: Theme.accent;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: root.customer-name;
+                    color: Theme.text;
+                    font-size: Theme.fs-md;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: root.customer-phone != "" ? root.customer-phone : "No phone";
+                        color: Theme.text-2;
+                        font-size: Theme.fs-sm;
+                    }
+                    if root.customer-owing : Text {
+                        text: "Owes " + root.customer-balance;
+                        color: Theme.danger;
+                        font-size: Theme.fs-sm;
+                        font-weight: 700;
+                    }
+                }
+            }
+            if root.allow-clear : VerticalLayout {
+                alignment: center;
+                IconButton {
+                    icon: Icons.x;
+                    tint: Theme.text-2;
+                    clicked => {
+                        root.customer-id = 0;
+                        root.customer-name = "";
+                        root.customer-phone = "";
+                        root.customer-owing = false;
+                        root.changed(0);
+                    }
+                }
+            }
+        }
+    }
+
+    if root.customer-id == 0 && !root.adding : VerticalLayout {
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            search := Field {
+                icon: Icons.search;
+                placeholder: root.empty-text;
+                text <=> root.query;
+                edited(t) => {
+                    CustomerSearch.search(t);
+                }
+            }
+            Button {
+                icon: Icons.user-plus;
+                text: "New";
+                clicked => {
+                    root.adding = true;
+                    root.n-name = root.query;
+                    root.n-phone = "";
+                    CustomerSearch.error = "";
+                }
+            }
+        }
+        if root.query != "" : Rectangle {
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border;
+            background: Theme.surface;
+            height: CustomerSearch.hits.length == 0 ? 44px : min(CustomerSearch.hits.length, 5) * 46px + 8px;
+            clip: true;
+            if CustomerSearch.hits.length == 0 : Text {
+                text: "No customer found. Click “New” to add them.";
+                color: Theme.muted;
+                font-size: Theme.fs;
+            }
+            VerticalLayout {
+                padding: 4px;
+                for c[i] in CustomerSearch.hits : Rectangle {
+                    height: 46px;
+                    border-radius: 7px;
+                    visible: i < 5;
+                    background: cta.has-hover ? Theme.hover : transparent;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        Avatar {
+                            initials: c.initials;
+                            size: 30px;
+                            color-index: i;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: c.name;
+                                color: Theme.text;
+                                font-size: Theme.fs-md;
+                                font-weight: 600;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: c.phone;
+                                color: Theme.muted;
+                                font-size: Theme.fs-sm;
+                            }
+                        }
+                        if c.owing : VerticalLayout {
+                            alignment: center;
+                            Badge {
+                                text: "Owes " + c.balance;
+                                tone: Tone.danger;
+                            }
+                        }
+                    }
+                    cta := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.customer-id = c.id;
+                            root.customer-name = c.name;
+                            root.customer-phone = c.phone;
+                            root.customer-balance = c.balance;
+                            root.customer-owing = c.owing;
+                            root.query = "";
+                            root.changed(c.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.customer-id == 0 && root.adding : Rectangle {
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface-2;
+        VerticalLayout {
+            padding: 12px;
+            spacing: 10px;
+            Text {
+                text: "New customer";
+                color: Theme.text;
+                font-weight: 700;
+                font-size: Theme.fs-md;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Field {
+                    placeholder: "Full name *";
+                    text <=> root.n-name;
+                }
+                Field {
+                    placeholder: "Phone";
+                    text <=> root.n-phone;
+                }
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                Field {
+                    placeholder: "ID card number (optional)";
+                    text <=> root.n-idno;
+                }
+                Field {
+                    placeholder: "Address (optional)";
+                    text <=> root.n-address;
+                }
+            }
+            if CustomerSearch.error != "" : Text {
+                text: CustomerSearch.error;
+                color: Theme.danger;
+                font-size: Theme.fs-sm;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Button {
+                    text: "Cancel";
+                    kind: ButtonKind.ghost;
+                    small: true;
+                    clicked => {
+                        root.adding = false;
+                    }
+                }
+                Button {
+                    text: "Add customer";
+                    kind: ButtonKind.primary;
+                    small: true;
+                    clicked => {
+                        let id = CustomerSearch.create(root.n-name, root.n-phone, root.n-idno, root.n-address);
+                        if id > 0 {
+                            root.customer-id = id;
+                            root.customer-name = root.n-name;
+                            root.customer-phone = root.n-phone;
+                            root.customer-owing = false;
+                            root.adding = false;
+                            root.query = "";
+                            root.changed(id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Type a code or name; pick a product from the list.
+export component ProductPicker inherits VerticalLayout {
+    in property <string> placeholder: "Type product code or name…";
+    callback picked(int);
+    property <string> query;
+    spacing: 6px;
+
+    Field {
+        icon: Icons.search;
+        placeholder: root.placeholder;
+        text <=> root.query;
+        edited(t) => {
+            ProductLookup.search(t);
+        }
+        accepted(t) => {
+            let id = ProductLookup.by-code(t);
+            if id > 0 {
+                root.picked(id);
+                root.query = "";
+                ProductLookup.search("");
+            } else if ProductLookup.hits.length > 0 {
+                root.picked(ProductLookup.hits[0].id);
+                root.query = "";
+                ProductLookup.search("");
+            }
+        }
+    }
+    if root.query != "" : Rectangle {
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface;
+        height: ProductLookup.hits.length == 0 ? 44px : min(ProductLookup.hits.length, 5) * 44px + 8px;
+        clip: true;
+        if ProductLookup.hits.length == 0 : Text {
+            text: "No product matches “" + root.query + "”";
+            color: Theme.muted;
+            font-size: Theme.fs;
+        }
+        VerticalLayout {
+            padding: 4px;
+            for p[i] in ProductLookup.hits : Rectangle {
+                height: 44px;
+                visible: i < 5;
+                border-radius: 7px;
+                background: pta.has-hover ? Theme.hover : transparent;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 10px;
+                    Text {
+                        width: 84px;
+                        text: p.code;
+                        color: Theme.accent;
+                        font-size: Theme.fs;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: p.name;
+                        color: Theme.text;
+                        font-size: Theme.fs-md;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        StockPill {
+                            stock: p.stock;
+                            level: p.level;
+                        }
+                    }
+                    Text {
+                        width: 90px;
+                        text: p.price;
+                        color: Theme.text;
+                        font-size: Theme.fs;
+                        font-weight: 600;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+                pta := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.picked(p.id);
+                        root.query = "";
+                        ProductLookup.search("");
+                    }
+                }
+            }
+        }
+    }
+}

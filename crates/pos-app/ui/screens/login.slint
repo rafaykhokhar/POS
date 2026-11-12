@@ -1,0 +1,434 @@
+// Pick your name, type your PIN.
+
+import { Theme, Tone } from "../theme.slint";
+import { Icons, Avatar, Button, ButtonKind } from "../widgets.slint";
+import { App } from "../globals.slint";
+
+export struct UserTile {
+    id: int,
+    name: string,
+    role: string,
+    initials: string,
+    color: int,
+}
+
+export global LoginData {
+    in-out property <[UserTile]> users;
+    in-out property <string> error;
+    // Returns true when the PIN is right.
+    callback attempt(int, string) -> bool;
+}
+
+component PinKey inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    callback pressed;
+    width: 76px;
+    height: 58px;
+    border-radius: 14px;
+    background: ta.pressed ? Theme.surface-3 : ta.has-hover ? Theme.hover : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    animate background { duration: 80ms; }
+    if root.label != "" : Text {
+        text: root.label;
+        color: Theme.text;
+        font-size: 22px;
+        font-weight: 600;
+    }
+    if root.icon.width > 0 : Image {
+        source: root.icon;
+        width: 22px;
+        height: 22px;
+        colorize: Theme.text-2;
+    }
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.pressed();
+        }
+    }
+}
+
+export component LoginScreen inherits Rectangle {
+    property <int> selected: -1;
+    property <string> pin;
+    property <int> shake: 0;
+    background: Theme.bg;
+
+    function press(d: string) {
+        if root.selected < 0 {
+            return;
+        }
+        if root.pin.character-count < 8 {
+            root.pin += d;
+            LoginData.error = "";
+        }
+    }
+    // Backspace clears the PIN (simplest and safest for short PINs).
+    function back() {
+        root.pin = "";
+    }
+    function submit() {
+        if root.selected < 0 || root.pin == "" {
+            return;
+        }
+        let ok = LoginData.attempt(LoginData.users[root.selected].id, root.pin);
+        root.pin = "";
+        if ok {
+            root.selected = -1;
+        }
+    }
+
+    fs := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Return {
+                root.submit();
+                return accept;
+            }
+            if event.text == Key.Backspace {
+                root.back();
+                return accept;
+            }
+            if event.text == Key.Escape {
+                root.selected = -1;
+                root.pin = "";
+                return accept;
+            }
+            if event.text == "0" || event.text == "1" || event.text == "2" || event.text == "3" || event.text == "4"
+                || event.text == "5" || event.text == "6" || event.text == "7" || event.text == "8" || event.text == "9" {
+                root.press(event.text);
+                return accept;
+            }
+            reject
+        }
+
+        HorizontalLayout {
+            // Brand side
+            Rectangle {
+                width: 40%;
+                clip: true;
+                background: @linear-gradient(155deg, #0c1424 0%, #0f2a33 55%, #0d4a45 100%);
+                Rectangle {
+                    x: parent.width - 260px;
+                    y: -120px;
+                    width: 420px;
+                    height: 420px;
+                    border-radius: 210px;
+                    background: #2dd4bf10;
+                }
+                Rectangle {
+                    x: -140px;
+                    y: parent.height - 260px;
+                    width: 380px;
+                    height: 380px;
+                    border-radius: 190px;
+                    background: #2dd4bf0c;
+                }
+                VerticalLayout {
+                    padding: 48px;
+                    spacing: 18px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Rectangle {
+                            width: 46px;
+                            height: 46px;
+                            border-radius: 13px;
+                            background: @linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%);
+                            drop-shadow-blur: 18px;
+                            drop-shadow-color: #2dd4bf55;
+                            Image {
+                                source: Icons.bolt;
+                                width: 24px;
+                                height: 24px;
+                                colorize: #ffffff;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: App.shop-name;
+                                color: #ffffff;
+                                font-size: Theme.fs-xl;
+                                font-weight: 800;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: "Point of Sale";
+                                color: #8fd9cf;
+                                font-size: Theme.fs;
+                            }
+                        }
+                    }
+                    Rectangle { }
+                    Text {
+                        text: App.clock;
+                        color: #ffffff;
+                        font-size: 56px;
+                        font-weight: 300;
+                        letter-spacing: -1px;
+                    }
+                    Text {
+                        text: App.date-long;
+                        color: #a8b5ca;
+                        font-size: Theme.fs-lg;
+                    }
+                    Rectangle {
+                        height: 24px;
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        for f in ["Vehicles", "Workshop", "Parts", "Reports"] : Rectangle {
+                            height: 28px;
+                            horizontal-stretch: 0;
+                            border-radius: 14px;
+                            background: #ffffff12;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                Text {
+                                    text: f;
+                                    color: #cfe9e5;
+                                    font-size: Theme.fs-sm;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Login side
+            Rectangle {
+                horizontal-stretch: 1;
+                if root.selected < 0 : VerticalLayout {
+                    alignment: center;
+                    padding: 48px;
+                    spacing: 26px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "Who's working?";
+                            color: Theme.text;
+                            font-size: Theme.fs-3xl;
+                            font-weight: 800;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Tap your name to log in";
+                            color: Theme.muted;
+                            font-size: Theme.fs-md;
+                            horizontal-alignment: center;
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        GridLayout {
+                            spacing: 14px;
+                            for u[i] in LoginData.users : Rectangle {
+                                col: Math.mod(i, 3);
+                                row: i / 3;
+                                width: 168px;
+                                height: 150px;
+                                border-radius: 16px;
+                                background: uta.has-hover ? Theme.surface : Theme.surface;
+                                border-width: uta.has-hover ? 2px : 1px;
+                                border-color: uta.has-hover ? Theme.accent : Theme.border;
+                                drop-shadow-blur: uta.has-hover ? 22px : 10px;
+                                drop-shadow-offset-y: uta.has-hover ? 8px : 3px;
+                                drop-shadow-color: Theme.shadow;
+                                animate drop-shadow-blur, drop-shadow-offset-y { duration: 150ms; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 10px;
+                                    HorizontalLayout {
+                                        alignment: center;
+                                        Avatar {
+                                            initials: u.initials;
+                                            color-index: u.color;
+                                            size: 56px;
+                                        }
+                                    }
+                                    Text {
+                                        text: u.name;
+                                        color: Theme.text;
+                                        font-size: Theme.fs-lg;
+                                        font-weight: 700;
+                                        horizontal-alignment: center;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: u.role;
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-sm;
+                                        horizontal-alignment: center;
+                                    }
+                                }
+                                uta := TouchArea {
+                                    width: 100%;
+                                    height: 100%;
+                                    mouse-cursor: pointer;
+                                    clicked => {
+                                        root.selected = i;
+                                        root.pin = "";
+                                        LoginData.error = "";
+                                        fs.focus();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if root.selected >= 0 : VerticalLayout {
+                    alignment: center;
+                    spacing: 22px;
+                    padding: 40px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Avatar {
+                            initials: LoginData.users[root.selected].initials;
+                            color-index: LoginData.users[root.selected].color;
+                            size: 72px;
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text {
+                            text: "Hi, " + LoginData.users[root.selected].name;
+                            color: Theme.text;
+                            font-size: Theme.fs-2xl;
+                            font-weight: 800;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: LoginData.error != "" ? LoginData.error : "Enter your PIN";
+                            color: LoginData.error != "" ? Theme.danger : Theme.muted;
+                            font-size: Theme.fs-md;
+                            horizontal-alignment: center;
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 14px;
+                        for d in [0, 1, 2, 3, 4, 5, 6, 7] : Rectangle {
+                            visible: d < max(4, root.pin.character-count);
+                            width: d < max(4, root.pin.character-count) ? 14px : 0px;
+                            height: 14px;
+                            border-radius: 7px;
+                            background: d < root.pin.character-count ? Theme.accent : transparent;
+                            border-width: 2px;
+                            border-color: d < root.pin.character-count ? Theme.accent : Theme.border-strong;
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        GridLayout {
+                            spacing: 12px;
+                            Row {
+                                PinKey {
+                                    label: "1";
+                                    pressed => {
+                                        root.press("1");
+                                    }
+                                }
+                                PinKey {
+                                    label: "2";
+                                    pressed => {
+                                        root.press("2");
+                                    }
+                                }
+                                PinKey {
+                                    label: "3";
+                                    pressed => {
+                                        root.press("3");
+                                    }
+                                }
+                            }
+                            Row {
+                                PinKey {
+                                    label: "4";
+                                    pressed => {
+                                        root.press("4");
+                                    }
+                                }
+                                PinKey {
+                                    label: "5";
+                                    pressed => {
+                                        root.press("5");
+                                    }
+                                }
+                                PinKey {
+                                    label: "6";
+                                    pressed => {
+                                        root.press("6");
+                                    }
+                                }
+                            }
+                            Row {
+                                PinKey {
+                                    label: "7";
+                                    pressed => {
+                                        root.press("7");
+                                    }
+                                }
+                                PinKey {
+                                    label: "8";
+                                    pressed => {
+                                        root.press("8");
+                                    }
+                                }
+                                PinKey {
+                                    label: "9";
+                                    pressed => {
+                                        root.press("9");
+                                    }
+                                }
+                            }
+                            Row {
+                                PinKey {
+                                    icon: Icons.backspace;
+                                    pressed => {
+                                        root.back();
+                                    }
+                                }
+                                PinKey {
+                                    label: "0";
+                                    pressed => {
+                                        root.press("0");
+                                    }
+                                }
+                                PinKey {
+                                    icon: Icons.arrow-right;
+                                    pressed => {
+                                        root.submit();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        Button {
+                            text: "Not you? Go back";
+                            icon: Icons.arrow-left;
+                            kind: ButtonKind.ghost;
+                            clicked => {
+                                root.selected = -1;
+                                root.pin = "";
+                                LoginData.error = "";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    init => {
+        fs.focus();
+    }
+}

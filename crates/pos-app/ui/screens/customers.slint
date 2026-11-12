@@ -1,0 +1,589 @@
+// Customers: list, balances, profile with bikes / purchases / workshop / payments.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, TextArea, Button, ButtonKind, Icons, IconButton, Card, Badge, Avatar, EmptyState, Th, Td, KeyValue, Modal, DialogFooter, Segmented, Notice, PageHeader, Tabs } from "../widgets.slint";
+import { App } from "../globals.slint";
+
+export struct CustRow {
+    id: int,
+    name: string,
+    initials: string,
+    phone: string,
+    id-no: string,
+    bikes: int,
+    spent: string,
+    balance: string,
+    owing: bool,
+    since: string,
+}
+
+export struct CustForm {
+    id: int,
+    name: string,
+    phone: string,
+    id-no: string,
+    address: string,
+    email: string,
+    notes: string,
+}
+
+export struct LineRow {
+    title: string,
+    sub: string,
+    right: string,
+    badge: string,
+    tone: int,
+}
+
+export global CustomersData {
+    in-out property <[CustRow]> rows;
+    in-out property <string> search;
+    in-out property <int> filter: 0;
+    in-out property <string> summary;
+    in-out property <bool> show-form;
+    in-out property <CustForm> form;
+    in-out property <string> form-error;
+    in-out property <bool> show-detail;
+    in-out property <CustRow> detail;
+    in-out property <string> detail-address;
+    in-out property <string> detail-email;
+    in-out property <string> detail-notes;
+    in-out property <int> detail-tab: 0;
+    in-out property <[LineRow]> bikes;
+    in-out property <[LineRow]> sales;
+    in-out property <[LineRow]> jobs;
+    in-out property <[LineRow]> payments;
+    in-out property <bool> show-pay;
+    in-out property <string> pay-error;
+    callback refresh();
+    callback new-customer();
+    callback edit(int);
+    callback save(CustForm) -> bool;
+    callback open(int);
+    callback receive(int, string, string) -> bool;
+}
+
+global CustUi {
+    public pure function tone(t: int) -> Tone {
+        if t == 1 { return Tone.danger; }
+        if t == 2 { return Tone.success; }
+        if t == 3 { return Tone.info; }
+        if t == 4 { return Tone.violet; }
+        if t == 5 { return Tone.warn; }
+        return Tone.neutral;
+    }
+}
+
+component LineList inherits VerticalLayout {
+    in property <[LineRow]> rows;
+    in property <string> empty;
+    spacing: 0px;
+    if root.rows.length == 0 : Text {
+        height: 80px;
+        text: root.empty;
+        color: Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    for r in root.rows : Rectangle {
+        height: 54px;
+        Rectangle {
+            y: parent.height - 1px;
+            height: 1px;
+            background: Theme.border;
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: r.title;
+                    color: Theme.text;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: r.sub;
+                    color: Theme.muted;
+                    font-size: Theme.fs-sm;
+                    overflow: elide;
+                }
+            }
+            if r.badge != "" : VerticalLayout {
+                alignment: center;
+                Badge {
+                    text: r.badge;
+                    tone: CustUi.tone(r.tone);
+                }
+            }
+            Text {
+                width: 120px;
+                text: r.right;
+                color: Theme.text;
+                font-weight: 700;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component CustomerFormDialog inherits Modal {
+    property <int> id: CustomersData.form.id;
+    property <string> name: CustomersData.form.name;
+    property <string> phone: CustomersData.form.phone;
+    property <string> id-no: CustomersData.form.id-no;
+    property <string> address: CustomersData.form.address;
+    property <string> email: CustomersData.form.email;
+    property <string> notes: CustomersData.form.notes;
+    title: root.id == 0 ? "New customer" : "Edit customer";
+    dialog-width: 620px;
+    close => {
+        CustomersData.show-form = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Full name *";
+                text <=> root.name;
+            }
+            Field {
+                label: "Phone";
+                text <=> root.phone;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "ID card number";
+                text <=> root.id-no;
+            }
+            Field {
+                label: "Email";
+                text <=> root.email;
+            }
+        }
+        Field {
+            label: "Address";
+            text <=> root.address;
+        }
+        TextArea {
+            label: "Notes";
+            area-height: 60px;
+            text <=> root.notes;
+        }
+        if CustomersData.form-error != "" : Notice {
+            text: CustomersData.form-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                CustomersData.show-form = false;
+            }
+        }
+        Button {
+            text: "Save";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                CustomersData.save({
+                    id: root.id,
+                    name: root.name,
+                    phone: root.phone,
+                    id-no: root.id-no,
+                    address: root.address,
+                    email: root.email,
+                    notes: root.notes,
+                });
+            }
+        }
+    }
+}
+
+component DetailDialog inherits Modal {
+    title: CustomersData.detail.name;
+    subtitle: (CustomersData.detail.phone != "" ? CustomersData.detail.phone + " · " : "") + "Customer since " + CustomersData.detail.since;
+    dialog-width: 820px;
+    close => {
+        CustomersData.show-detail = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 78px;
+                border-radius: Theme.radius-lg;
+                background: CustomersData.detail.owing ? Theme.danger-soft : Theme.success-soft;
+                HorizontalLayout {
+                    padding: 16px;
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: CustomersData.detail.owing ? "Balance owed" : "Balance";
+                            color: CustomersData.detail.owing ? Theme.danger : Theme.success;
+                            font-size: Theme.fs-sm;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: CustomersData.detail.balance;
+                            color: Theme.text;
+                            font-size: Theme.fs-2xl;
+                            font-weight: 800;
+                        }
+                    }
+                    if CustomersData.detail.owing : VerticalLayout {
+                        alignment: center;
+                        Button {
+                            text: "Receive payment";
+                            icon: Icons.wallet;
+                            kind: ButtonKind.primary;
+                            clicked => {
+                                CustomersData.pay-error = "";
+                                CustomersData.show-pay = true;
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                width: 200px;
+                height: 78px;
+                border-radius: Theme.radius-lg;
+                background: Theme.surface-2;
+                VerticalLayout {
+                    padding: 16px;
+                    alignment: center;
+                    Text {
+                        text: "Total spent";
+                        color: Theme.muted;
+                        font-size: Theme.fs-sm;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: CustomersData.detail.spent;
+                        color: Theme.text;
+                        font-size: Theme.fs-xl;
+                        font-weight: 800;
+                    }
+                }
+            }
+            Rectangle {
+                width: 120px;
+                height: 78px;
+                border-radius: Theme.radius-lg;
+                background: Theme.surface-2;
+                VerticalLayout {
+                    padding: 16px;
+                    alignment: center;
+                    Text {
+                        text: "Bikes";
+                        color: Theme.muted;
+                        font-size: Theme.fs-sm;
+                        font-weight: 700;
+                    }
+                    Text {
+                        text: CustomersData.detail.bikes;
+                        color: Theme.text;
+                        font-size: Theme.fs-xl;
+                        font-weight: 800;
+                    }
+                }
+            }
+        }
+        if CustomersData.detail-address != "" || CustomersData.detail.id-no != "" || CustomersData.detail-notes != "" : Text {
+            text: (CustomersData.detail.id-no != "" ? "ID " + CustomersData.detail.id-no + "   " : "") + (CustomersData.detail-address != "" ? CustomersData.detail-address + "   " : "") + CustomersData.detail-notes;
+            color: Theme.text-2;
+            font-size: Theme.fs;
+            wrap: word-wrap;
+        }
+        Tabs {
+            items: ["Bikes", "Purchases", "Workshop", "Payments"];
+            current <=> CustomersData.detail-tab;
+        }
+        ScrollView {
+            height: 300px;
+            VerticalLayout {
+                if CustomersData.detail-tab == 0 : LineList {
+                    rows: CustomersData.bikes;
+                    empty: "No bikes yet.";
+                }
+                if CustomersData.detail-tab == 1 : LineList {
+                    rows: CustomersData.sales;
+                    empty: "No purchases yet.";
+                }
+                if CustomersData.detail-tab == 2 : LineList {
+                    rows: CustomersData.jobs;
+                    empty: "No workshop visits yet.";
+                }
+                if CustomersData.detail-tab == 3 : LineList {
+                    rows: CustomersData.payments;
+                    empty: "No payments yet.";
+                }
+            }
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Edit details";
+            icon: Icons.edit;
+            clicked => {
+                CustomersData.edit(CustomersData.detail.id);
+            }
+        }
+        Button {
+            text: "Close";
+            kind: ButtonKind.primary;
+            clicked => {
+                CustomersData.show-detail = false;
+            }
+        }
+    }
+}
+
+component PayDialog inherits Modal {
+    property <int> method: 0;
+    property <string> amount;
+    property <string> reference;
+    title: "Receive payment";
+    subtitle: CustomersData.detail.name + " owes " + CustomersData.detail.balance;
+    dialog-width: 460px;
+    close => {
+        CustomersData.show-pay = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Segmented {
+            fill: true;
+            items: ["Cash", "Bank transfer"];
+            current <=> root.method;
+        }
+        Field {
+            label: "Amount received";
+            prefix: App.currency;
+            input-type: InputType.decimal;
+            text <=> root.amount;
+            field-height: 46px;
+            font-size: 18px;
+        }
+        if root.method == 1 : Field {
+            label: "Bank / reference";
+            text <=> root.reference;
+        }
+        Text {
+            text: "The payment is applied to the oldest unpaid bills first.";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+        if CustomersData.pay-error != "" : Notice {
+            text: CustomersData.pay-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                CustomersData.show-pay = false;
+            }
+        }
+        Button {
+            text: "Save payment";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                CustomersData.receive(root.method, root.amount, root.reference);
+            }
+        }
+    }
+}
+
+export component CustomersScreen inherits Rectangle {
+    background: Theme.bg;
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        PageHeader {
+            title: "Customers";
+            subtitle: CustomersData.summary;
+            VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "New customer";
+                    icon: Icons.user-plus;
+                    kind: ButtonKind.primary;
+                    clicked => {
+                        CustomersData.new-customer();
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                icon: Icons.search;
+                placeholder: "Search name, phone or ID number…";
+                text <=> CustomersData.search;
+                edited => {
+                    CustomersData.refresh();
+                }
+            }
+            Segmented {
+                items: ["All customers", "Owe money"];
+                current <=> CustomersData.filter;
+                changed => {
+                    CustomersData.refresh();
+                }
+            }
+        }
+        Card {
+            vertical-stretch: 1;
+            clip: true;
+            VerticalLayout {
+                Rectangle {
+                    height: 40px;
+                    background: Theme.surface-2;
+                    HorizontalLayout {
+                        padding-left: 18px;
+                        padding-right: 18px;
+                        spacing: 12px;
+                        Th {
+                            horizontal-stretch: 1;
+                            text: "CUSTOMER";
+                        }
+                        Th {
+                            width: 140px;
+                            text: "PHONE";
+                        }
+                        Th {
+                            width: 60px;
+                            text: "BIKES";
+                            horizontal-alignment: center;
+                        }
+                        Th {
+                            width: 120px;
+                            text: "TOTAL SPENT";
+                            horizontal-alignment: right;
+                        }
+                        Th {
+                            width: 120px;
+                            text: "BALANCE";
+                            horizontal-alignment: right;
+                        }
+                        Th {
+                            width: 110px;
+                            text: "SINCE";
+                            horizontal-alignment: right;
+                        }
+                    }
+                }
+                if CustomersData.rows.length == 0 : EmptyState {
+                    vertical-stretch: 1;
+                    icon: Icons.users;
+                    title: "No customers found";
+                    text: "Customers are added at the counter, when selling a bike, or here.";
+                }
+                if CustomersData.rows.length > 0 : ListView {
+                    vertical-stretch: 1;
+                    for c[i] in CustomersData.rows : Rectangle {
+                        height: 58px;
+                        background: cta.has-hover ? Theme.hover : transparent;
+                        cta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                CustomersData.open(c.id);
+                            }
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                        HorizontalLayout {
+                            padding-left: 18px;
+                            padding-right: 18px;
+                            spacing: 12px;
+                            HorizontalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 12px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Avatar {
+                                        initials: c.initials;
+                                        color-index: c.id;
+                                        size: 34px;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text {
+                                        text: c.name;
+                                        color: Theme.text;
+                                        font-size: Theme.fs-md;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    if c.id-no != "" : Text {
+                                        text: "ID " + c.id-no;
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-xs;
+                                    }
+                                }
+                            }
+                            Td {
+                                width: 140px;
+                                text: c.phone != "" ? c.phone : "—";
+                                text-color: Theme.text-2;
+                            }
+                            Td {
+                                width: 60px;
+                                text: c.bikes;
+                                horizontal-alignment: center;
+                            }
+                            Td {
+                                width: 120px;
+                                text: c.spent;
+                                horizontal-alignment: right;
+                            }
+                            Td {
+                                width: 120px;
+                                text: c.owing ? c.balance : "—";
+                                text-color: c.owing ? Theme.danger : Theme.muted;
+                                font-weight: 700;
+                                horizontal-alignment: right;
+                            }
+                            Td {
+                                width: 110px;
+                                text: c.since;
+                                text-color: Theme.muted;
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if CustomersData.show-detail : DetailDialog { }
+    if CustomersData.show-form : CustomerFormDialog { }
+    if CustomersData.show-pay : PayDialog { }
+}

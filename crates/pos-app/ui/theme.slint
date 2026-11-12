@@ -1,0 +1,104 @@
+// Colours, sizes and type scale. Every screen reads from here so light/dark switch instantly.
+
+export enum Tone { neutral, accent, success, warn, danger, info, violet }
+
+export global Theme {
+    in-out property <bool> dark: false;
+
+    // surfaces
+    out property <color> bg: dark ? #0a0f1c : #f2f4f8;
+    out property <color> surface: dark ? #111827 : #ffffff;
+    out property <color> surface-2: dark ? #161f33 : #f8fafc;
+    out property <color> surface-3: dark ? #1d2840 : #eef2f7;
+    out property <color> hover: dark ? #1a2438 : #f3f6fa;
+    out property <color> border: dark ? #222e47 : #e5e9f0;
+    out property <color> border-strong: dark ? #2f3d5c : #d3dae5;
+
+    // text
+    out property <color> text: dark ? #e8edf6 : #0f172a;
+    out property <color> text-2: dark ? #a6b2c8 : #475569;
+    out property <color> muted: dark ? #6f7d97 : #8b97aa;
+
+    // brand: electric teal
+    out property <color> accent: dark ? #2dd4bf : #0d9488;
+    out property <color> accent-hover: dark ? #5eead4 : #0f766e;
+    out property <color> accent-soft: dark ? #0d3533 : #e3f5f3;
+    out property <color> on-accent: dark ? #042f2b : #ffffff;
+
+    // status
+    out property <color> danger: dark ? #f87171 : #dc2626;
+    out property <color> danger-soft: dark ? #3a1618 : #fdeaea;
+    out property <color> warn: dark ? #fbbf24 : #d97706;
+    out property <color> warn-soft: dark ? #392908 : #fef3e2;
+    out property <color> success: dark ? #4ade80 : #15803d;
+    out property <color> success-soft: dark ? #0f2c1b : #e6f6ec;
+    out property <color> info: dark ? #60a5fa : #2563eb;
+    out property <color> info-soft: dark ? #10223f : #e8f0fe;
+    out property <color> violet: dark ? #a78bfa : #7c3aed;
+    out property <color> violet-soft: dark ? #231a40 : #f1ebfe;
+
+    // sidebar (always dark)
+    out property <color> side-bg: dark ? #060a14 : #0c1424;
+    out property <color> side-text: #93a1b8;
+    out property <color> side-active: #ffffff;
+    out property <color> side-hover: #ffffff10;
+    out property <color> side-active-bg: #ffffff14;
+
+    out property <color> shadow: dark ? #00000070 : #0f172a12;
+    out property <color> shadow-strong: dark ? #000000a0 : #0f172a30;
+    out property <color> scrim: dark ? #000000a8 : #0f172a73;
+
+    // radii
+    out property <length> radius-sm: 8px;
+    out property <length> radius: 10px;
+    out property <length> radius-lg: 14px;
+
+    // type scale
+    out property <length> fs-xs: 11px;
+    out property <length> fs-sm: 12px;
+    out property <length> fs: 13px;
+    out property <length> fs-md: 14px;
+    out property <length> fs-lg: 16px;
+    out property <length> fs-xl: 20px;
+    out property <length> fs-2xl: 24px;
+    out property <length> fs-3xl: 30px;
+
+    out property <length> control-h: 38px;
+
+    public pure function tone-fg(t: Tone) -> color {
+        if t == Tone.accent { return accent; }
+        if t == Tone.success { return success; }
+        if t == Tone.warn { return warn; }
+        if t == Tone.danger { return danger; }
+        if t == Tone.info { return info; }
+        if t == Tone.violet { return violet; }
+        return text-2;
+    }
+
+    public pure function tone-bg(t: Tone) -> color {
+        if t == Tone.accent { return accent-soft; }
+        if t == Tone.success { return success-soft; }
+        if t == Tone.warn { return warn-soft; }
+        if t == Tone.danger { return danger-soft; }
+        if t == Tone.info { return info-soft; }
+        if t == Tone.violet { return violet-soft; }
+        return surface-3;
+    }
+
+    // Stock level -> tone. 0 ok, 1 getting low (amber), 2 low (red), 3 out (red)
+    public pure function level-tone(level: int) -> Tone {
+        if level >= 2 { return Tone.danger; }
+        if level == 1 { return Tone.warn; }
+        return Tone.neutral;
+    }
+
+    // Palette for avatars / chart series
+    public pure function palette(i: int) -> color {
+        if Math.mod(i, 6) == 0 { return dark ? #2dd4bf : #0d9488; }
+        if Math.mod(i, 6) == 1 { return dark ? #60a5fa : #2563eb; }
+        if Math.mod(i, 6) == 2 { return dark ? #a78bfa : #7c3aed; }
+        if Math.mod(i, 6) == 3 { return dark ? #fbbf24 : #d97706; }
+        if Math.mod(i, 6) == 4 { return dark ? #f472b6 : #db2777; }
+        return dark ? #4ade80 : #15803d;
+    }
+}

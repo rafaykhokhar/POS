@@ -1,0 +1,586 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Card, StatCard, Icons, Button, ButtonKind, Badge, StockPill, EmptyState, Th, Td, Divider, SectionTitle, KeyValue } from "../widgets.slint";
+import { App, Page, SaleRow } from "../globals.slint";
+
+export struct DashStats {
+    sales-today: string,
+    count-today: string,
+    profit-today: string,
+    cash-today: string,
+    bank-today: string,
+    sales-month: string,
+    profit-month: string,
+    vehicles-stock: string,
+    vehicles-sold: string,
+    open-jobs: string,
+    ready-jobs: string,
+    low-count: int,
+    out-count: int,
+    receivables: string,
+    bookings: string,
+}
+
+export struct Bar {
+    label: string,
+    value: string,
+    ratio: float,
+    today: bool,
+}
+
+export struct LowRow {
+    id: int,
+    code: string,
+    name: string,
+    stock: int,
+    low: int,
+    level: int,
+    unit: string,
+}
+
+export struct StatusCount {
+    label: string,
+    count: int,
+    index: int,
+}
+
+export struct DueRow {
+    vehicle: string,
+    customer: string,
+    phone: string,
+    due: string,
+    overdue: bool,
+}
+
+export global DashData {
+    in-out property <DashStats> stats;
+    in-out property <[Bar]> bars;
+    in-out property <string> week-total;
+    in-out property <[SaleRow]> recent;
+    in-out property <[LowRow]> low;
+    in-out property <[StatusCount]> jobs;
+    in-out property <int> jobs-max: 1;
+    in-out property <[DueRow]> due;
+    in-out property <string> greeting;
+    callback refresh();
+    callback open-low-stock();
+    callback open-sale(int);
+}
+
+component CardHeader inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> sub;
+    in property <string> action;
+    callback action-clicked;
+    spacing: 8px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 2px;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: Theme.fs-lg;
+            font-weight: 700;
+        }
+        if root.sub != "" : Text {
+            text: root.sub;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+    }
+    if root.action != "" : VerticalLayout {
+        alignment: start;
+        Button {
+            text: root.action;
+            kind: ButtonKind.ghost;
+            small: true;
+            icon: Icons.chevron-right;
+            clicked => {
+                root.action-clicked();
+            }
+        }
+    }
+}
+
+export component DashboardScreen inherits Rectangle {
+    background: Theme.bg;
+    ScrollView {
+        VerticalLayout {
+            padding: 28px;
+            spacing: 20px;
+
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: DashData.greeting;
+                        color: Theme.text;
+                        font-size: Theme.fs-3xl;
+                        font-weight: 800;
+                        letter-spacing: -0.5px;
+                    }
+                    Text {
+                        text: App.date-long + " · Here's how the shop is doing today";
+                        color: Theme.muted;
+                        font-size: Theme.fs-md;
+                    }
+                }
+                if App.perms.workshop : VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "New job card";
+                        icon: Icons.wrench;
+                        clicked => {
+                            App.navigate(Page.workshop);
+                        }
+                    }
+                }
+                if App.perms.counter : VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "New sale";
+                        icon: Icons.cart;
+                        kind: ButtonKind.primary;
+                        clicked => {
+                            App.navigate(Page.counter);
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                StatCard {
+                    horizontal-stretch: 1;
+                    title: "Today's sales";
+                    value: DashData.stats.sales-today;
+                    sub: DashData.stats.count-today + " bills today";
+                    icon: Icons.receipt;
+                    tone: Tone.accent;
+                    clicked => {
+                        if App.perms.reports {
+                            App.navigate(Page.reports);
+                        }
+                    }
+                }
+                if App.perms.view-cost : StatCard {
+                    horizontal-stretch: 1;
+                    title: "Today's profit";
+                    value: DashData.stats.profit-today;
+                    sub: "This month " + DashData.stats.profit-month;
+                    icon: Icons.trend-up;
+                    tone: Tone.success;
+                    clicked => {
+                        if App.perms.reports {
+                            App.navigate(Page.reports);
+                        }
+                    }
+                }
+                StatCard {
+                    horizontal-stretch: 1;
+                    title: "Bikes in showroom";
+                    value: DashData.stats.vehicles-stock;
+                    sub: DashData.stats.vehicles-sold + " sold · " + DashData.stats.bookings + " booked";
+                    icon: Icons.scooter;
+                    tone: Tone.info;
+                    clicked => {
+                        if App.perms.vehicles {
+                            App.navigate(Page.vehicles);
+                        }
+                    }
+                }
+                StatCard {
+                    horizontal-stretch: 1;
+                    title: "Workshop";
+                    value: DashData.stats.open-jobs + " open";
+                    sub: DashData.stats.ready-jobs + " ready to collect";
+                    icon: Icons.wrench;
+                    tone: Tone.violet;
+                    clicked => {
+                        if App.perms.workshop {
+                            App.navigate(Page.workshop);
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                // Sales chart
+                Card {
+                    horizontal-stretch: 2;
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 16px;
+                        CardHeader {
+                            title: "Sales, last 7 days";
+                            sub: "Total " + DashData.week-total;
+                        }
+                        HorizontalLayout {
+                            height: 210px;
+                            spacing: 14px;
+                            for b in DashData.bars : VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 6px;
+                                alignment: end;
+                                Text {
+                                    text: b.value;
+                                    color: b.today ? Theme.accent : Theme.muted;
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    overflow: elide;
+                                }
+                                Rectangle {
+                                    height: max(4px, b.ratio * 150px);
+                                    border-radius: 6px;
+                                    background: b.today ? @linear-gradient(180deg, Theme.accent 0%, Theme.accent.darker(0.15) 100%) : Theme.accent.transparentize(0.75);
+                                    animate height { duration: 400ms; easing: ease-out; }
+                                }
+                                Text {
+                                    text: b.label;
+                                    color: b.today ? Theme.text : Theme.muted;
+                                    font-size: Theme.fs-sm;
+                                    font-weight: b.today ? 700 : 500;
+                                    horizontal-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Month & money
+                Card {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 14px;
+                        CardHeader {
+                            title: "This month";
+                        }
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "Sales";
+                                color: Theme.muted;
+                                font-size: Theme.fs-sm;
+                                font-weight: 600;
+                            }
+                            Text {
+                                text: DashData.stats.sales-month;
+                                color: Theme.text;
+                                font-size: Theme.fs-2xl;
+                                font-weight: 800;
+                            }
+                        }
+                        if App.perms.view-cost : VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: "Profit";
+                                color: Theme.muted;
+                                font-size: Theme.fs-sm;
+                                font-weight: 600;
+                            }
+                            Text {
+                                text: DashData.stats.profit-month;
+                                color: Theme.success;
+                                font-size: Theme.fs-2xl;
+                                font-weight: 800;
+                            }
+                        }
+                        Divider { }
+                        KeyValue {
+                            key: "Cash received today";
+                            value: DashData.stats.cash-today;
+                        }
+                        KeyValue {
+                            key: "Bank transfers today";
+                            value: DashData.stats.bank-today;
+                        }
+                        KeyValue {
+                            key: "Customers owe you";
+                            value: DashData.stats.receivables;
+                            value-color: Theme.danger;
+                        }
+                        KeyValue {
+                            key: "Low stock items";
+                            value: DashData.stats.low-count;
+                            value-color: DashData.stats.low-count > 0 ? Theme.danger : Theme.text;
+                        }
+                        KeyValue {
+                            key: "Out of stock";
+                            value: DashData.stats.out-count;
+                            value-color: DashData.stats.out-count > 0 ? Theme.danger : Theme.text;
+                        }
+                        Rectangle { }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 16px;
+                // Low stock
+                Card {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 12px;
+                        CardHeader {
+                            title: "Low stock";
+                            sub: "Needs reordering";
+                            action: "View all";
+                            action-clicked => {
+                                DashData.open-low-stock();
+                            }
+                        }
+                        if DashData.low.length == 0 : EmptyState {
+                            icon: Icons.check;
+                            title: "All stocked up";
+                            text: "Nothing is running low.";
+                        }
+                        for p in DashData.low : Rectangle {
+                            height: 44px;
+                            HorizontalLayout {
+                                spacing: 10px;
+                                Rectangle {
+                                    width: 3px;
+                                    border-radius: 2px;
+                                    background: p.level >= 2 ? Theme.danger : Theme.warn;
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: p.name;
+                                        color: Theme.text;
+                                        font-size: Theme.fs;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: p.code + " · reorder at " + p.low;
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-xs;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    StockPill {
+                                        stock: p.stock;
+                                        level: p.level;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // Workshop board summary
+                Card {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 12px;
+                        CardHeader {
+                            title: "Workshop";
+                            sub: "Bikes in the workshop now";
+                            action: App.perms.workshop ? "Open board" : "";
+                            action-clicked => {
+                                App.navigate(Page.workshop);
+                            }
+                        }
+                        for s in DashData.jobs : VerticalLayout {
+                            spacing: 6px;
+                            vertical-stretch: 0;
+                            padding-bottom: 4px;
+                            HorizontalLayout {
+                                Text {
+                                    text: s.label;
+                                    color: Theme.text-2;
+                                    font-size: Theme.fs;
+                                    horizontal-stretch: 1;
+                                }
+                                Text {
+                                    text: s.count;
+                                    color: Theme.text;
+                                    font-size: Theme.fs;
+                                    font-weight: 700;
+                                }
+                            }
+                            Rectangle {
+                                height: 8px;
+                                border-radius: 4px;
+                                background: Theme.surface-3;
+                                Rectangle {
+                                    x: 0;
+                                    width: parent.width * (s.count / max(1, DashData.jobs-max));
+                                    height: parent.height;
+                                    border-radius: 4px;
+                                    background: Theme.palette(s.index);
+                                    animate width { duration: 400ms; easing: ease-out; }
+                                }
+                            }
+                        }
+                        Rectangle { }
+                    }
+                }
+                // Service due
+                Card {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 12px;
+                        CardHeader {
+                            title: "Service due";
+                            sub: "Next 7 days and overdue";
+                        }
+                        if DashData.due.length == 0 : EmptyState {
+                            icon: Icons.calendar;
+                            title: "No services due";
+                            text: "Bikes due for service will show here.";
+                        }
+                        for d in DashData.due : Rectangle {
+                            height: 46px;
+                            HorizontalLayout {
+                                spacing: 10px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: d.customer;
+                                        color: Theme.text;
+                                        font-size: Theme.fs;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: d.vehicle + (d.phone != "" ? " · " + d.phone : "");
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-xs;
+                                        overflow: elide;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Badge {
+                                        text: d.due;
+                                        tone: d.overdue ? Tone.danger : Tone.warn;
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle { }
+                    }
+                }
+            }
+
+            // Recent sales
+            Card {
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 10px;
+                    CardHeader {
+                        title: "Recent sales";
+                        action: App.perms.reports ? "All sales" : "";
+                        action-clicked => {
+                            App.navigate(Page.reports);
+                        }
+                    }
+                    if DashData.recent.length == 0 : EmptyState {
+                        icon: Icons.receipt;
+                        title: "No sales yet";
+                        text: "Sales you make at the counter, showroom and workshop appear here.";
+                    }
+                    if DashData.recent.length > 0 : HorizontalLayout {
+                        height: 30px;
+                        spacing: 12px;
+                        Th {
+                            text: "INVOICE";
+                            width: 120px;
+                        }
+                        Th {
+                            text: "TYPE";
+                            width: 120px;
+                        }
+                        Th {
+                            text: "CUSTOMER";
+                            horizontal-stretch: 1;
+                        }
+                        Th {
+                            text: "BY";
+                            width: 110px;
+                        }
+                        Th {
+                            text: "TIME";
+                            width: 150px;
+                        }
+                        Th {
+                            text: "TOTAL";
+                            width: 120px;
+                            horizontal-alignment: right;
+                        }
+                    }
+                    for s in DashData.recent : Rectangle {
+                        height: 42px;
+                        border-radius: 8px;
+                        background: rta.has-hover ? Theme.hover : transparent;
+                        Rectangle {
+                            y: 0;
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Td {
+                                text: s.invoice;
+                                width: 120px;
+                                font-weight: 700;
+                                text-color: Theme.accent;
+                            }
+                            HorizontalLayout {
+                                width: 120px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Badge {
+                                        text: s.kind;
+                                        tone: s.is-return ? Tone.danger : s.kind == "Vehicle sale" ? Tone.info : s.kind == "Workshop" ? Tone.violet : Tone.accent;
+                                    }
+                                }
+                            }
+                            Td {
+                                text: s.customer != "" ? s.customer : "Walk-in";
+                                horizontal-stretch: 1;
+                                text-color: s.customer != "" ? Theme.text : Theme.muted;
+                            }
+                            Td {
+                                text: s.user;
+                                width: 110px;
+                                text-color: Theme.text-2;
+                            }
+                            Td {
+                                text: s.date + ", " + s.time;
+                                width: 150px;
+                                text-color: Theme.text-2;
+                            }
+                            Td {
+                                text: s.total;
+                                width: 120px;
+                                horizontal-alignment: right;
+                                font-weight: 700;
+                                text-color: s.is-return ? Theme.danger : Theme.text;
+                            }
+                        }
+                        rta := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: pointer;
+                            clicked => {
+                                DashData.open-sale(s.id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,107 @@
+// App-wide state shared between Rust and the UI.
+
+export enum Page { dashboard, counter, vehicles, workshop, products, customers, reports, cash, settings }
+
+export struct Perms {
+    dashboard: bool,
+    counter: bool,
+    vehicles: bool,
+    sell-vehicles: bool,
+    workshop: bool,
+    products: bool,
+    edit-products: bool,
+    adjust-stock: bool,
+    customers: bool,
+    reports: bool,
+    view-cost: bool,
+    discounts: bool,
+    refunds: bool,
+    cash: bool,
+    settings: bool,
+    staff: bool,
+}
+
+export global App {
+    in-out property <bool> setup-done: true;
+    in-out property <bool> logged-in: false;
+    in-out property <Page> page: Page.dashboard;
+    in-out property <string> shop-name: "EV Showroom";
+    in-out property <string> user-name;
+    in-out property <string> user-role;
+    in-out property <string> user-initials;
+    in-out property <int> user-color;
+    in-out property <Perms> perms;
+    in-out property <string> currency: "Rs";
+    in-out property <string> clock;
+    in-out property <string> date-long;
+    in-out property <bool> drawer-open;
+    // toast notification
+    in-out property <string> toast-text;
+    in-out property <bool> toast-error;
+    in-out property <bool> toast-visible;
+    callback navigate(Page);
+    callback logout();
+    callback toggle-theme();
+}
+
+export struct SaleRow {
+    id: int,
+    invoice: string,
+    kind: string,
+    is-return: bool,
+    customer: string,
+    user: string,
+    total: string,
+    paid: string,
+    balance: string,
+    owing: bool,
+    profit: string,
+    items: int,
+    date: string,
+    time: string,
+}
+
+export struct CustomerHit {
+    id: int,
+    name: string,
+    phone: string,
+    balance: string,
+    owing: bool,
+    initials: string,
+}
+
+export struct ProductHit {
+    id: int,
+    code: string,
+    name: string,
+    price: string,
+    stock: int,
+    level: int,
+    unit: string,
+    info: string,
+}
+
+// Shared customer search used by every customer picker.
+export global CustomerSearch {
+    in-out property <[CustomerHit]> hits;
+    callback search(string);
+    // Returns the new customer's id, or 0 and sets `error`.
+    callback create(string, string, string, string) -> int;
+    callback get(int) -> CustomerHit;
+    in-out property <string> error;
+}
+
+// Shared product search used when adding parts to jobs, purchases and vehicle sales.
+export global ProductLookup {
+    in-out property <[ProductHit]> hits;
+    callback search(string);
+    // Exact code lookup; returns id or 0.
+    callback by-code(string) -> int;
+}
+
+// Generic label/value row. tone: 0 normal, 1 red, 2 green, 9 bold total.
+export struct KV {
+    label: string,
+    value: string,
+    tone: int,
+}

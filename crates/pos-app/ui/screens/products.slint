@@ -1,0 +1,1239 @@
+// Parts & accessories: list, red/amber stock levels, add/edit, adjust, receive, categories.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, TextArea, Select, Toggle, Button, ButtonKind, Icons, IconButton, Card, Badge, StockPill, EmptyState, Th, Td, Divider, KeyValue, Modal, DialogFooter, Segmented, Notice, Label, PageHeader } from "../widgets.slint";
+import { App } from "../globals.slint";
+import { ProductPicker } from "common.slint";
+
+export struct ProductRow {
+    id: int,
+    code: string,
+    name: string,
+    sub: string,
+    category: string,
+    kind: string,
+    stock: int,
+    low: int,
+    level: int,
+    unit: string,
+    cost: string,
+    price: string,
+    margin: string,
+    active: bool,
+}
+
+export struct ProductForm {
+    id: int,
+    code: string,
+    name: string,
+    category: int,
+    kind: int,
+    brand: string,
+    unit: string,
+    cost: string,
+    price: string,
+    stock: string,
+    low: string,
+    fits: string,
+    location: string,
+    warranty: string,
+    barcode: string,
+    notes: string,
+    active: bool,
+    serial: bool,
+}
+
+export struct CatRow {
+    id: int,
+    name: string,
+    prefix: string,
+    count: int,
+}
+
+export struct ReceiveLine {
+    product-id: int,
+    code: string,
+    name: string,
+    qty: string,
+    cost: string,
+    total: string,
+}
+
+export struct MoveRow {
+    date: string,
+    change: string,
+    positive: bool,
+    reason: string,
+    reference: string,
+    user: string,
+}
+
+export global ProductsData {
+    in-out property <[ProductRow]> rows;
+    in-out property <[CatRow]> categories;
+    in-out property <[string]> category-names;
+    in-out property <[string]> filter-names;
+    in-out property <string> search;
+    in-out property <int> category-filter: 0;
+    in-out property <int> level-filter: 0;
+    in-out property <string> stat-products;
+    in-out property <string> stat-units;
+    in-out property <string> stat-value;
+    in-out property <string> stat-retail;
+    in-out property <int> stat-low;
+    in-out property <int> stat-out;
+    // product form
+    in-out property <bool> show-form;
+    in-out property <ProductForm> form;
+    in-out property <string> form-error;
+    // stock adjust
+    in-out property <bool> show-adjust;
+    in-out property <string> adjust-name;
+    in-out property <string> adjust-code;
+    in-out property <int> adjust-stock;
+    in-out property <string> adjust-unit;
+    in-out property <string> adjust-error;
+    // receive stock
+    in-out property <bool> show-receive;
+    in-out property <[ReceiveLine]> receive-lines;
+    in-out property <[string]> supplier-names;
+    in-out property <string> receive-total;
+    in-out property <string> receive-error;
+    // categories
+    in-out property <bool> show-categories;
+    in-out property <string> cat-error;
+    // history
+    in-out property <bool> show-history;
+    in-out property <string> history-title;
+    in-out property <[MoveRow]> history;
+
+    callback refresh();
+    callback new-product();
+    callback edit(int);
+    callback suggest-code(int) -> string;
+    pure callback margin-text(string, string) -> string;
+    callback save(ProductForm) -> bool;
+    callback open-adjust(int);
+    callback adjust(int, string, string, string) -> bool;
+    callback open-receive();
+    callback receive-add(int);
+    callback receive-set(int, string, string);
+    callback receive-remove(int);
+    callback receive-save(int, string) -> bool;
+    callback add-supplier(string, string) -> int;
+    callback save-category(int, string, string) -> bool;
+    callback delete-category(int);
+    callback open-history(int);
+}
+
+component MiniStat inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <Tone> tone: Tone.neutral;
+    in property <bool> active;
+    callback clicked;
+    height: 68px;
+    horizontal-stretch: 1;
+    preferred-width: 100px;
+    border-radius: Theme.radius-lg;
+    background: Theme.surface;
+    border-width: root.active ? 2px : 1px;
+    border-color: root.active ? Theme.tone-fg(root.tone) : Theme.border;
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.label;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+            font-weight: 600;
+        }
+        Text {
+            text: root.value;
+            color: root.tone == Tone.neutral ? Theme.text : Theme.tone-fg(root.tone);
+            font-size: Theme.fs-xl;
+            font-weight: 800;
+            preferred-width: 0px;
+            overflow: elide;
+        }
+    }
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component ProductRowView inherits Rectangle {
+    in property <ProductRow> p;
+    in property <bool> show-cost;
+    in property <bool> can-edit;
+    in property <bool> can-adjust;
+    height: 58px;
+    background: root.p.level >= 2 ? (ta.has-hover ? Theme.danger-soft : Theme.danger-soft.transparentize(0.45)) : ta.has-hover ? Theme.hover : transparent;
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        double-clicked => {
+            if root.can-edit {
+                ProductsData.edit(root.p.id);
+            }
+        }
+    }
+    if root.p.level >= 2 : Rectangle {
+        x: 0;
+        width: 3px;
+        background: Theme.danger;
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 10px;
+        spacing: 12px;
+        Td {
+            width: 92px;
+            text: root.p.code;
+            text-color: Theme.accent;
+            font-weight: 700;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.p.name;
+                    color: root.p.active ? Theme.text : Theme.muted;
+                    font-size: Theme.fs-md;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                if !root.p.active : Badge {
+                    text: "Not sold";
+                }
+            }
+            Text {
+                text: root.p.sub;
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                overflow: elide;
+            }
+        }
+        Td {
+            width: 110px;
+            text: root.p.category;
+            text-color: Theme.text-2;
+        }
+        HorizontalLayout {
+            width: 118px;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                StockPill {
+                    stock: root.p.stock;
+                    level: root.p.level;
+                    unit: root.p.unit;
+                }
+            }
+        }
+        Td {
+            width: 64px;
+            text: root.p.low;
+            text-color: Theme.text-2;
+            horizontal-alignment: center;
+        }
+        if root.show-cost : Td {
+            width: 92px;
+            text: root.p.cost;
+            text-color: Theme.text-2;
+            horizontal-alignment: right;
+        }
+        Td {
+            width: 92px;
+            text: root.p.price;
+            font-weight: 700;
+            horizontal-alignment: right;
+        }
+        if root.show-cost : Td {
+            width: 62px;
+            text: root.p.margin;
+            text-color: Theme.success;
+            font-weight: 600;
+            horizontal-alignment: right;
+        }
+        VerticalLayout {
+            width: 104px;
+            alignment: center;
+            HorizontalLayout {
+                spacing: 2px;
+                alignment: end;
+                IconButton {
+                    icon: Icons.history;
+                    clicked => {
+                        ProductsData.open-history(root.p.id);
+                    }
+                }
+                if root.can-adjust : IconButton {
+                    icon: Icons.layers;
+                    tint: Theme.info;
+                    clicked => {
+                        ProductsData.open-adjust(root.p.id);
+                    }
+                }
+                if root.can-edit : IconButton {
+                    icon: Icons.edit;
+                    clicked => {
+                        ProductsData.edit(root.p.id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+component ProductFormDialog inherits Modal {
+    property <int> id: ProductsData.form.id;
+    property <string> code: ProductsData.form.code;
+    property <string> name: ProductsData.form.name;
+    property <int> category: ProductsData.form.category;
+    property <int> kind: ProductsData.form.kind;
+    property <string> brand: ProductsData.form.brand;
+    property <string> unit: ProductsData.form.unit;
+    property <string> cost: ProductsData.form.cost;
+    property <string> price: ProductsData.form.price;
+    property <string> stock: ProductsData.form.stock;
+    property <string> low: ProductsData.form.low;
+    property <string> fits: ProductsData.form.fits;
+    property <string> location: ProductsData.form.location;
+    property <string> warranty: ProductsData.form.warranty;
+    property <string> barcode: ProductsData.form.barcode;
+    property <string> notes: ProductsData.form.notes;
+    property <bool> active: ProductsData.form.active;
+    property <bool> serial: ProductsData.form.serial;
+    title: root.id == 0 ? "New product" : "Edit product";
+    subtitle: root.id == 0 ? "Codes are yours to choose. Leave it empty to get a suggestion." : root.code + " · " + root.name;
+    dialog-width: 720px;
+    close => {
+        ProductsData.show-form = false;
+    }
+    ScrollView {
+        height: min(560px, inner.preferred-height);
+        inner := VerticalLayout {
+            padding: 22px;
+            padding-top: 8px;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 12px;
+                Select {
+                    label: "Category";
+                    placeholder: "No category";
+                    model: ProductsData.category-names;
+                    current-index <=> root.category;
+                    selected(i) => {
+                        if root.id == 0 && App.perms.edit-products {
+                            root.code = ProductsData.suggest-code(i);
+                        }
+                    }
+                }
+                Select {
+                    label: "Type";
+                    model: ["Spare part", "Accessory"];
+                    current-index <=> root.kind;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                VerticalLayout {
+                    width: 210px;
+                    spacing: 6px;
+                    Label {
+                        text: "Code *";
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Field {
+                            placeholder: "e.g. BRK-012";
+                            text <=> root.code;
+                        }
+                        Button {
+                            icon: Icons.refresh;
+                            clicked => {
+                                root.code = ProductsData.suggest-code(root.category);
+                            }
+                        }
+                    }
+                }
+                Field {
+                    label: "Product name *";
+                    placeholder: "e.g. Front Brake Pads";
+                    text <=> root.name;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                if App.perms.view-cost : Field {
+                    label: "Cost price (what you pay)";
+                    prefix: App.currency;
+                    input-type: InputType.decimal;
+                    text <=> root.cost;
+                }
+                Field {
+                    label: "Sale price *";
+                    prefix: App.currency;
+                    input-type: InputType.decimal;
+                    text <=> root.price;
+                    hint: App.perms.view-cost ? ProductsData.margin-text(root.cost, root.price) : "";
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                if root.id == 0 : Field {
+                    label: "Opening stock";
+                    input-type: InputType.number;
+                    placeholder: "0";
+                    text <=> root.stock;
+                }
+                Field {
+                    label: "Turn red at (low stock level)";
+                    input-type: InputType.number;
+                    text <=> root.low;
+                    hint: "Shows red when stock is at or below this.";
+                }
+                Field {
+                    label: "Unit";
+                    placeholder: "pcs, set, pair…";
+                    text <=> root.unit;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Field {
+                    label: "Fits models";
+                    placeholder: "e.g. Spark S1, Breeze";
+                    text <=> root.fits;
+                }
+                Field {
+                    label: "Brand";
+                    placeholder: "Optional";
+                    text <=> root.brand;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Field {
+                    label: "Shelf / location";
+                    placeholder: "e.g. Rack B2";
+                    text <=> root.location;
+                }
+                Field {
+                    label: "Warranty (months)";
+                    input-type: InputType.number;
+                    placeholder: "0";
+                    text <=> root.warranty;
+                }
+                Field {
+                    label: "Barcode (for scanner later)";
+                    placeholder: "Optional";
+                    text <=> root.barcode;
+                }
+            }
+            TextArea {
+                label: "Notes";
+                area-height: 60px;
+                text <=> root.notes;
+            }
+            HorizontalLayout {
+                spacing: 20px;
+                Toggle {
+                    text: "Has serial numbers";
+                    description: "e.g. batteries and chargers";
+                    checked <=> root.serial;
+                }
+                Toggle {
+                    text: "Available for sale";
+                    description: "Turn off to hide it from the counter";
+                    checked <=> root.active;
+                }
+            }
+            if ProductsData.form-error != "" : Notice {
+                text: ProductsData.form-error;
+            }
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                ProductsData.show-form = false;
+            }
+        }
+        Button {
+            text: root.id == 0 ? "Add product" : "Save changes";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                ProductsData.save({
+                    id: root.id,
+                    code: root.code,
+                    name: root.name,
+                    category: root.category,
+                    kind: root.kind,
+                    brand: root.brand,
+                    unit: root.unit,
+                    cost: root.cost,
+                    price: root.price,
+                    stock: root.stock,
+                    low: root.low,
+                    fits: root.fits,
+                    location: root.location,
+                    warranty: root.warranty,
+                    barcode: root.barcode,
+                    notes: root.notes,
+                    active: root.active,
+                    serial: root.serial,
+                });
+            }
+        }
+    }
+}
+
+component AdjustDialog inherits Modal {
+    property <int> mode: 0;
+    property <string> qty;
+    property <int> reason: 0;
+    property <string> note;
+    property <[string]> reasons: root.mode == 0 ? ["Found / recount", "Returned by customer", "Correction", "Other"] : root.mode == 1 ? ["Damaged", "Lost / stolen", "Expired", "Returned to supplier", "Used in shop", "Correction", "Other"] : ["Stocktake count"];
+    property <int> n: root.qty.is-float() ? root.qty.to-float() : 0;
+    property <int> new-stock: root.mode == 0 ? ProductsData.adjust-stock + root.n : root.mode == 1 ? ProductsData.adjust-stock - root.n : root.n;
+    title: "Adjust stock";
+    subtitle: ProductsData.adjust-code + " · " + ProductsData.adjust-name;
+    dialog-width: 500px;
+    close => {
+        ProductsData.show-adjust = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Segmented {
+            fill: true;
+            items: ["Add", "Remove", "Set exact count"];
+            current <=> root.mode;
+            changed => {
+                root.reason = 0;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: root.mode == 2 ? "Counted quantity" : "Quantity";
+                input-type: InputType.number;
+                text <=> root.qty;
+                field-height: 46px;
+                font-size: 18px;
+            }
+            Select {
+                label: "Reason";
+                model: root.reasons;
+                current-index <=> root.reason;
+                field-height: 46px;
+            }
+        }
+        Field {
+            label: "Note (optional)";
+            text <=> root.note;
+        }
+        Rectangle {
+            height: 56px;
+            border-radius: Theme.radius;
+            background: Theme.surface-2;
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                Text {
+                    text: "Stock now " + ProductsData.adjust-stock + " " + ProductsData.adjust-unit;
+                    color: Theme.text-2;
+                    font-size: Theme.fs-md;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                Image {
+                    source: Icons.arrow-right;
+                    width: 18px;
+                    colorize: Theme.muted;
+                }
+                Text {
+                    text: "  After: " + root.new-stock + " " + ProductsData.adjust-unit;
+                    color: root.new-stock < 0 ? Theme.danger : Theme.text;
+                    font-size: Theme.fs-md;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                }
+            }
+        }
+        if ProductsData.adjust-error != "" : Notice {
+            text: ProductsData.adjust-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                ProductsData.show-adjust = false;
+            }
+        }
+        Button {
+            text: "Save adjustment";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            clicked => {
+                ProductsData.adjust(root.mode, root.qty, root.reasons[root.reason], root.note);
+            }
+        }
+    }
+}
+
+component ReceiveDialog inherits Modal {
+    property <int> supplier: -1;
+    property <string> notes;
+    property <bool> adding-supplier;
+    property <string> s-name;
+    property <string> s-phone;
+    title: "Receive stock";
+    subtitle: "Items you received from a supplier. Stock and average cost update automatically.";
+    dialog-width: 820px;
+    close => {
+        ProductsData.show-receive = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 12px;
+            if !root.adding-supplier : Select {
+                label: "Supplier";
+                placeholder: "Choose supplier (optional)";
+                model: ProductsData.supplier-names;
+                current-index <=> root.supplier;
+            }
+            if !root.adding-supplier : VerticalLayout {
+                alignment: end;
+                Button {
+                    text: "New supplier";
+                    icon: Icons.plus;
+                    clicked => {
+                        root.adding-supplier = true;
+                    }
+                }
+            }
+            if root.adding-supplier : Field {
+                label: "Supplier name";
+                text <=> root.s-name;
+            }
+            if root.adding-supplier : Field {
+                label: "Phone";
+                text <=> root.s-phone;
+            }
+            if root.adding-supplier : VerticalLayout {
+                alignment: end;
+                Button {
+                    text: "Add";
+                    kind: ButtonKind.soft;
+                    clicked => {
+                        let i = ProductsData.add-supplier(root.s-name, root.s-phone);
+                        if i >= 0 {
+                            root.supplier = i;
+                            root.adding-supplier = false;
+                        }
+                    }
+                }
+            }
+        }
+        ProductPicker {
+            placeholder: "Type a product code or name to add it…";
+            picked(id) => {
+                ProductsData.receive-add(id);
+            }
+        }
+        Rectangle {
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border;
+            min-height: 120px;
+            clip: true;
+            VerticalLayout {
+                Rectangle {
+                    height: 36px;
+                    background: Theme.surface-2;
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 8px;
+                        spacing: 10px;
+                        Th {
+                            width: 86px;
+                            text: "CODE";
+                        }
+                        Th {
+                            horizontal-stretch: 1;
+                            text: "PRODUCT";
+                        }
+                        Th {
+                            width: 90px;
+                            text: "QTY";
+                        }
+                        Th {
+                            width: 120px;
+                            text: "COST EACH";
+                        }
+                        Th {
+                            width: 110px;
+                            text: "LINE TOTAL";
+                            horizontal-alignment: right;
+                        }
+                        Rectangle {
+                            width: 32px;
+                        }
+                    }
+                }
+                if ProductsData.receive-lines.length == 0 : Text {
+                    height: 80px;
+                    text: "No items yet. Search above to add products.";
+                    color: Theme.muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                for l[i] in ProductsData.receive-lines : Rectangle {
+                    height: 50px;
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 8px;
+                        spacing: 10px;
+                        Td {
+                            width: 86px;
+                            text: l.code;
+                            text-color: Theme.accent;
+                            font-weight: 700;
+                        }
+                        Td {
+                            horizontal-stretch: 1;
+                            text: l.name;
+                        }
+                        VerticalLayout {
+                            width: 90px;
+                            alignment: center;
+                            Field {
+                                field-height: 34px;
+                                input-type: InputType.number;
+                                text: l.qty;
+                                edited(t) => {
+                                    ProductsData.receive-set(i, t, l.cost);
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            width: 120px;
+                            alignment: center;
+                            Field {
+                                field-height: 34px;
+                                input-type: InputType.decimal;
+                                text: l.cost;
+                                edited(t) => {
+                                    ProductsData.receive-set(i, l.qty, t);
+                                }
+                            }
+                        }
+                        Td {
+                            width: 110px;
+                            text: l.total;
+                            font-weight: 700;
+                            horizontal-alignment: right;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: Icons.trash;
+                                tint: Theme.danger;
+                                clicked => {
+                                    ProductsData.receive-remove(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                label: "Notes / supplier invoice no.";
+                text <=> root.notes;
+            }
+            VerticalLayout {
+                alignment: end;
+                width: 220px;
+                Rectangle {
+                    height: Theme.control-h;
+                    border-radius: Theme.radius-sm;
+                    background: Theme.accent-soft;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        Text {
+                            text: "Total";
+                            color: Theme.accent;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: ProductsData.receive-total;
+                            color: Theme.accent;
+                            font-weight: 800;
+                            font-size: Theme.fs-lg;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+        if ProductsData.receive-error != "" : Notice {
+            text: ProductsData.receive-error;
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Cancel";
+            kind: ButtonKind.ghost;
+            clicked => {
+                ProductsData.show-receive = false;
+            }
+        }
+        Button {
+            text: "Save & add to stock";
+            icon: Icons.check;
+            kind: ButtonKind.primary;
+            enabled: ProductsData.receive-lines.length > 0;
+            clicked => {
+                ProductsData.receive-save(root.supplier, root.notes);
+            }
+        }
+    }
+}
+
+component CategoriesDialog inherits Modal {
+    property <int> editing: -1;
+    property <string> e-name;
+    property <string> e-prefix;
+    property <string> n-name;
+    property <string> n-prefix;
+    title: "Categories";
+    subtitle: "Group your products. The prefix is used to suggest codes, e.g. BRK → BRK-001.";
+    dialog-width: 560px;
+    close => {
+        ProductsData.show-categories = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 8px;
+            Field {
+                placeholder: "New category name";
+                text <=> root.n-name;
+            }
+            Field {
+                width: 110px;
+                horizontal-stretch: 0;
+                placeholder: "Prefix";
+                text <=> root.n-prefix;
+            }
+            Button {
+                text: "Add";
+                icon: Icons.plus;
+                kind: ButtonKind.primary;
+                clicked => {
+                    if ProductsData.save-category(0, root.n-name, root.n-prefix) {
+                        root.n-name = "";
+                        root.n-prefix = "";
+                    }
+                }
+            }
+        }
+        if ProductsData.cat-error != "" : Notice {
+            text: ProductsData.cat-error;
+        }
+        ScrollView {
+            height: min(360px, max(60px, ProductsData.categories.length * 48px));
+            VerticalLayout {
+                for c[i] in ProductsData.categories : Rectangle {
+                    height: 48px;
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    if root.editing != i : HorizontalLayout {
+                        spacing: 10px;
+                        padding-right: 4px;
+                        Text {
+                            text: c.name;
+                            color: Theme.text;
+                            font-size: Theme.fs-md;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Badge {
+                                text: c.prefix != "" ? c.prefix : "—";
+                                tone: Tone.accent;
+                            }
+                        }
+                        Text {
+                            width: 90px;
+                            text: c.count + " products";
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: Icons.edit;
+                                clicked => {
+                                    root.editing = i;
+                                    root.e-name = c.name;
+                                    root.e-prefix = c.prefix;
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IconButton {
+                                icon: Icons.trash;
+                                tint: Theme.danger;
+                                clicked => {
+                                    ProductsData.delete-category(c.id);
+                                }
+                            }
+                        }
+                    }
+                    if root.editing == i : HorizontalLayout {
+                        spacing: 8px;
+                        padding-top: 5px;
+                        padding-bottom: 5px;
+                        Field {
+                            field-height: 36px;
+                            text <=> root.e-name;
+                        }
+                        Field {
+                            width: 100px;
+                            horizontal-stretch: 0;
+                            field-height: 36px;
+                            text <=> root.e-prefix;
+                        }
+                        Button {
+                            text: "Save";
+                            small: true;
+                            kind: ButtonKind.primary;
+                            clicked => {
+                                if ProductsData.save-category(c.id, root.e-name, root.e-prefix) {
+                                    root.editing = -1;
+                                }
+                            }
+                        }
+                        Button {
+                            text: "Cancel";
+                            small: true;
+                            kind: ButtonKind.ghost;
+                            clicked => {
+                                root.editing = -1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    DialogFooter {
+        Button {
+            text: "Done";
+            kind: ButtonKind.primary;
+            clicked => {
+                ProductsData.show-categories = false;
+            }
+        }
+    }
+}
+
+component HistoryDialog inherits Modal {
+    title: "Stock history";
+    subtitle: ProductsData.history-title;
+    dialog-width: 680px;
+    close => {
+        ProductsData.show-history = false;
+    }
+    VerticalLayout {
+        padding: 22px;
+        padding-top: 8px;
+        spacing: 0px;
+        if ProductsData.history.length == 0 : EmptyState {
+            icon: Icons.history;
+            title: "No stock movements yet";
+        }
+        ScrollView {
+            height: min(420px, ProductsData.history.length * 46px);
+            VerticalLayout {
+                for m in ProductsData.history : Rectangle {
+                    height: 46px;
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Td {
+                            width: 160px;
+                            text: m.date;
+                            text-color: Theme.text-2;
+                        }
+                        Td {
+                            width: 64px;
+                            text: m.change;
+                            text-color: m.positive ? Theme.success : Theme.danger;
+                            font-weight: 800;
+                            horizontal-alignment: right;
+                        }
+                        Td {
+                            horizontal-stretch: 1;
+                            text: m.reason + (m.reference != "" ? " · " + m.reference : "");
+                        }
+                        Td {
+                            width: 100px;
+                            text: m.user;
+                            text-color: Theme.muted;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ProductsScreen inherits Rectangle {
+    background: Theme.bg;
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        PageHeader {
+            title: "Parts & Stock";
+            subtitle: ProductsData.stat-products + " products · items in red need reordering";
+            if App.perms.edit-products : VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "Categories";
+                    icon: Icons.folder;
+                    clicked => {
+                        ProductsData.cat-error = "";
+                        ProductsData.show-categories = true;
+                    }
+                }
+            }
+            if App.perms.adjust-stock : VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "Receive stock";
+                    icon: Icons.truck;
+                    clicked => {
+                        ProductsData.open-receive();
+                    }
+                }
+            }
+            if App.perms.edit-products : VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "New product";
+                    icon: Icons.plus;
+                    kind: ButtonKind.primary;
+                    clicked => {
+                        ProductsData.new-product();
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 12px;
+            MiniStat {
+                label: "Products";
+                value: ProductsData.stat-products;
+                active: ProductsData.level-filter == 0;
+                clicked => {
+                    ProductsData.level-filter = 0;
+                    ProductsData.refresh();
+                }
+            }
+            MiniStat {
+                label: "Units in stock";
+                value: ProductsData.stat-units;
+            }
+            if App.perms.view-cost : MiniStat {
+                label: "Stock value (cost)";
+                value: ProductsData.stat-value;
+                tone: Tone.accent;
+            }
+            MiniStat {
+                label: "Low stock";
+                value: ProductsData.stat-low;
+                tone: ProductsData.stat-low > 0 ? Tone.danger : Tone.neutral;
+                active: ProductsData.level-filter == 1;
+                clicked => {
+                    ProductsData.level-filter = 1;
+                    ProductsData.refresh();
+                }
+            }
+            MiniStat {
+                label: "Out of stock";
+                value: ProductsData.stat-out;
+                tone: ProductsData.stat-out > 0 ? Tone.danger : Tone.neutral;
+                active: ProductsData.level-filter == 2;
+                clicked => {
+                    ProductsData.level-filter = 2;
+                    ProductsData.refresh();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 12px;
+            Field {
+                icon: Icons.search;
+                placeholder: "Search code, name, brand or model…";
+                text <=> ProductsData.search;
+                edited => {
+                    ProductsData.refresh();
+                }
+            }
+            Select {
+                width: 210px;
+                horizontal-stretch: 0;
+                model: ProductsData.filter-names;
+                current-index <=> ProductsData.category-filter;
+                selected => {
+                    ProductsData.refresh();
+                }
+            }
+            Segmented {
+                items: ["All", "Low stock", "Out of stock"];
+                current <=> ProductsData.level-filter;
+                changed => {
+                    ProductsData.refresh();
+                }
+            }
+        }
+
+        Card {
+            vertical-stretch: 1;
+            clip: true;
+            VerticalLayout {
+                Rectangle {
+                    height: 40px;
+                    background: Theme.surface-2;
+                    HorizontalLayout {
+                        padding-left: 18px;
+                        padding-right: 10px;
+                        spacing: 12px;
+                        Th {
+                            width: 92px;
+                            text: "CODE";
+                        }
+                        Th {
+                            horizontal-stretch: 1;
+                            text: "PRODUCT";
+                        }
+                        Th {
+                            width: 110px;
+                            text: "CATEGORY";
+                        }
+                        Th {
+                            width: 118px;
+                            text: "IN STOCK";
+                        }
+                        Th {
+                            width: 64px;
+                            text: "RED AT";
+                            horizontal-alignment: center;
+                        }
+                        if App.perms.view-cost : Th {
+                            width: 92px;
+                            text: "COST";
+                            horizontal-alignment: right;
+                        }
+                        Th {
+                            width: 92px;
+                            text: "PRICE";
+                            horizontal-alignment: right;
+                        }
+                        if App.perms.view-cost : Th {
+                            width: 62px;
+                            text: "MARGIN";
+                            horizontal-alignment: right;
+                        }
+                        Rectangle {
+                            width: 104px;
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                }
+                if ProductsData.rows.length == 0 : EmptyState {
+                    vertical-stretch: 1;
+                    icon: Icons.box;
+                    title: ProductsData.search != "" || ProductsData.level-filter != 0 ? "Nothing matches" : "No products yet";
+                    text: ProductsData.search != "" || ProductsData.level-filter != 0 ? "Try a different search or filter." : "Add your parts and accessories with “New product”.";
+                }
+                if ProductsData.rows.length > 0 : ListView {
+                    vertical-stretch: 1;
+                    for p in ProductsData.rows : ProductRowView {
+                        p: p;
+                        show-cost: App.perms.view-cost;
+                        can-edit: App.perms.edit-products;
+                        can-adjust: App.perms.adjust-stock;
+                    }
+                }
+            }
+        }
+    }
+
+    if ProductsData.show-form : ProductFormDialog { }
+    if ProductsData.show-adjust : AdjustDialog { }
+    if ProductsData.show-receive : ReceiveDialog { }
+    if ProductsData.show-categories : CategoriesDialog { }
+    if ProductsData.show-history : HistoryDialog { }
+}

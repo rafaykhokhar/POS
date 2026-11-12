@@ -1,0 +1,1012 @@
+// Reports: automatic profit sheet, sales (with returns) and stock value.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, Button, ButtonKind, Icons, IconButton, Card, Badge, StatCard, EmptyState, Th, Td, Divider, KeyValue, Modal, DialogFooter, Segmented, Notice, PageHeader, Tabs, Select } from "../widgets.slint";
+import { App, SaleRow, KV } from "../globals.slint";
+
+export struct ProfitSec {
+    name: string,
+    revenue: string,
+    cost: string,
+    profit: string,
+    margin: string,
+    ratio: float,
+    color: int,
+    negative: bool,
+}
+
+export struct ProfitLine {
+    section: string,
+    color: int,
+    code: string,
+    name: string,
+    qty: string,
+    revenue: string,
+    cost: string,
+    profit: string,
+    margin: string,
+    negative: bool,
+}
+
+export struct DayBar {
+    label: string,
+    value: string,
+    revenue: float,
+    profit: float,
+}
+
+export struct ReceiptLine {
+    item-id: int,
+    code: string,
+    desc: string,
+    qty: string,
+    price: string,
+    total: string,
+    note: string,
+    can-return: int,
+}
+
+export global ReportsData {
+    in-out property <int> tab: 0;
+    in-out property <int> range: 3;
+    in-out property <string> from;
+    in-out property <string> to;
+    in-out property <string> range-label;
+    // profit sheet
+    in-out property <string> revenue;
+    in-out property <string> cost;
+    in-out property <string> profit;
+    in-out property <string> margin;
+    in-out property <bool> loss;
+    in-out property <[KV]> extras;
+    in-out property <[ProfitSec]> sections;
+    in-out property <[ProfitLine]> items;
+    in-out property <[DayBar]> days;
+    in-out property <int> item-filter: 0;
+    // sales
+    in-out property <[SaleRow]> sales;
+    in-out property <string> sales-search;
+    in-out property <int> sales-kind: 0;
+    in-out property <[KV]> sales-stats;
+    // sale detail
+    in-out property <bool> show-sale;
+    in-out property <string> sale-title;
+    in-out property <string> sale-sub;
+    in-out property <[ReceiptLine]> sale-lines;
+    in-out property <[KV]> sale-totals;
+    in-out property <[KV]> sale-payments;
+    in-out property <bool> sale-can-return;
+    in-out property <bool> return-mode;
+    in-out property <string> return-error;
+    in-out property <string> return-total;
+    // stock
+    in-out property <[KV]> stock-stats;
+
+    callback refresh();
+    callback set-range(int);
+    callback apply-custom(string, string);
+    callback export-profit();
+    callback export-sales();
+    callback export-stock();
+    callback open-sale(int);
+    callback set-return-qty(int, string);
+    callback do-return(int, string) -> bool;
+    callback print-sale(int);
+}
+
+global RepUi {
+    public pure function sec-color(i: int) -> color {
+        return Theme.palette(i);
+    }
+}
+
+component SaleDialog inherits Modal {
+    property <int> refund: 0;
+    property <string> note;
+    title: ReportsData.sale-title;
+    subtitle: ReportsData.sale-sub;
+    dialog-width: 720px;
+    close => {
+        ReportsData.show-sale = false;
+    }
+    VerticalLayout {
+        ScrollView {
+            height: min(520px, body.preferred-height);
+            body := VerticalLayout {
+                padding: 22px;
+                padding-top: 8px;
+                spacing: 14px;
+                Rectangle {
+                    border-radius: Theme.radius;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    clip: true;
+                    VerticalLayout {
+                        Rectangle {
+                            height: 36px;
+                            background: Theme.surface-2;
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                spacing: 10px;
+                                Th {
+                                    horizontal-stretch: 1;
+                                    text: "ITEM";
+                                }
+                                Th {
+                                    width: 60px;
+                                    text: "QTY";
+                                    horizontal-alignment: center;
+                                }
+                                Th {
+                                    width: 100px;
+                                    text: "PRICE";
+                                    horizontal-alignment: right;
+                                }
+                                Th {
+                                    width: 110px;
+                                    text: ReportsData.return-mode ? "RETURN QTY" : "TOTAL";
+                                    horizontal-alignment: right;
+                                }
+                            }
+                        }
+                        for l[i] in ReportsData.sale-lines : Rectangle {
+                            height: 50px;
+                            Rectangle {
+                                y: 0;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        text: l.desc;
+                                        color: Theme.text;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        text: l.code + (l.note != "" ? " · " + l.note : "");
+                                        color: Theme.muted;
+                                        font-size: Theme.fs-xs;
+                                        overflow: elide;
+                                    }
+                                }
+                                Td {
+                                    width: 60px;
+                                    text: l.qty;
+                                    horizontal-alignment: center;
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: l.price;
+                                    horizontal-alignment: right;
+                                    text-color: Theme.text-2;
+                                }
+                                if !ReportsData.return-mode : Td {
+                                    width: 110px;
+                                    text: l.total;
+                                    font-weight: 700;
+                                    horizontal-alignment: right;
+                                }
+                                if ReportsData.return-mode : VerticalLayout {
+                                    width: 110px;
+                                    alignment: center;
+                                    if l.can-return > 0 : Field {
+                                        field-height: 34px;
+                                        placeholder: "0 of " + l.can-return;
+                                        input-type: InputType.number;
+                                        align: TextHorizontalAlignment.right;
+                                        edited(t) => {
+                                            ReportsData.set-return-qty(i, t);
+                                        }
+                                    }
+                                    if l.can-return == 0 : Text {
+                                        text: "—";
+                                        color: Theme.muted;
+                                        horizontal-alignment: right;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 16px;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        border-radius: Theme.radius;
+                        background: Theme.surface-2;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 8px;
+                            Text {
+                                text: "Payments";
+                                color: Theme.text;
+                                font-weight: 700;
+                            }
+                            if ReportsData.sale-payments.length == 0 : Text {
+                                text: "No payments recorded";
+                                color: Theme.muted;
+                            }
+                            for p in ReportsData.sale-payments : KeyValue {
+                                key: p.label;
+                                value: p.value;
+                                value-color: p.tone == 1 ? Theme.danger : Theme.text;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: 280px;
+                        border-radius: Theme.radius;
+                        background: Theme.surface-2;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 8px;
+                            for t in ReportsData.sale-totals : KeyValue {
+                                key: t.label;
+                                value: t.value;
+                                strong: t.tone == 9;
+                                value-color: t.tone == 1 ? Theme.danger : t.tone == 2 ? Theme.success : Theme.text;
+                            }
+                        }
+                    }
+                }
+                if ReportsData.return-mode : VerticalLayout {
+                    spacing: 10px;
+                    Segmented {
+                        fill: true;
+                        items: ["Refund in cash", "Refund by bank", "Keep as customer credit"];
+                        current <=> root.refund;
+                    }
+                    Field {
+                        label: "Reason";
+                        placeholder: "e.g. wrong size, faulty";
+                        text <=> root.note;
+                    }
+                    Rectangle {
+                        height: 44px;
+                        border-radius: Theme.radius;
+                        background: Theme.warn-soft;
+                        Text {
+                            text: "Refund: " + ReportsData.return-total;
+                            color: Theme.warn;
+                            font-size: Theme.fs-lg;
+                            font-weight: 800;
+                        }
+                    }
+                }
+                if ReportsData.return-error != "" : Notice {
+                    text: ReportsData.return-error;
+                }
+            }
+        }
+        DialogFooter {
+            if ReportsData.sale-can-return && !ReportsData.return-mode && App.perms.refunds : Button {
+                text: "Return items";
+                icon: Icons.undo;
+                clicked => {
+                    ReportsData.return-error = "";
+                    ReportsData.return-mode = true;
+                }
+            }
+            if ReportsData.return-mode : Button {
+                text: "Back";
+                kind: ButtonKind.ghost;
+                clicked => {
+                    ReportsData.return-mode = false;
+                }
+            }
+            if ReportsData.return-mode : Button {
+                text: "Confirm return";
+                kind: ButtonKind.danger;
+                icon: Icons.undo;
+                clicked => {
+                    ReportsData.do-return(root.refund, root.note);
+                }
+            }
+            if !ReportsData.return-mode : Button {
+                text: "Receipt";
+                icon: Icons.printer;
+                clicked => {
+                    ReportsData.print-sale(0);
+                }
+            }
+            if !ReportsData.return-mode : Button {
+                text: "A4 invoice";
+                icon: Icons.file;
+                clicked => {
+                    ReportsData.print-sale(1);
+                }
+            }
+            if !ReportsData.return-mode : Button {
+                text: "Close";
+                kind: ButtonKind.primary;
+                clicked => {
+                    ReportsData.show-sale = false;
+                }
+            }
+        }
+    }
+}
+
+component RangeBar inherits HorizontalLayout {
+    property <string> f: ReportsData.from;
+    property <string> t: ReportsData.to;
+    spacing: 10px;
+    Segmented {
+        items: ["Today", "Yesterday", "This week", "This month", "Last month", "This year", "Custom"];
+        current <=> ReportsData.range;
+        changed(i) => {
+            ReportsData.set-range(i);
+        }
+    }
+    if ReportsData.range == 6 : Field {
+        width: 130px;
+        horizontal-stretch: 0;
+        placeholder: "From YYYY-MM-DD";
+        text <=> root.f;
+    }
+    if ReportsData.range == 6 : Field {
+        width: 130px;
+        horizontal-stretch: 0;
+        placeholder: "To YYYY-MM-DD";
+        text <=> root.t;
+    }
+    if ReportsData.range == 6 : Button {
+        text: "Apply";
+        kind: ButtonKind.soft;
+        clicked => {
+            ReportsData.apply-custom(root.f, root.t);
+        }
+    }
+    Rectangle {
+        horizontal-stretch: 1;
+    }
+    Text {
+        text: ReportsData.range-label;
+        color: Theme.muted;
+        font-size: Theme.fs;
+        vertical-alignment: center;
+    }
+}
+
+export component ReportsScreen inherits Rectangle {
+    background: Theme.bg;
+    VerticalLayout {
+        padding: 24px;
+        spacing: 14px;
+        PageHeader {
+            title: "Reports";
+            subtitle: "Profit, sales and stock, worked out automatically from every sale";
+            VerticalLayout {
+                alignment: center;
+                Button {
+                    text: "Export to Excel";
+                    icon: Icons.download;
+                    clicked => {
+                        if ReportsData.tab == 0 {
+                            ReportsData.export-profit();
+                        } else if ReportsData.tab == 1 {
+                            ReportsData.export-sales();
+                        } else {
+                            ReportsData.export-stock();
+                        }
+                    }
+                }
+            }
+        }
+        Tabs {
+            items: App.perms.view-cost ? ["Profit sheet", "Sales", "Stock value"] : ["Profit sheet", "Sales", "Stock value"];
+            current <=> ReportsData.tab;
+            changed => {
+                ReportsData.refresh();
+            }
+        }
+        if ReportsData.tab != 2 : RangeBar { }
+
+        // ------------------------------------------------ profit sheet
+        if ReportsData.tab == 0 && !App.perms.view-cost : EmptyState {
+            vertical-stretch: 1;
+            icon: Icons.lock;
+            title: "Only managers and owners can see profit";
+        }
+        if ReportsData.tab == 0 && App.perms.view-cost : ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 16px;
+                HorizontalLayout {
+                    spacing: 14px;
+                    StatCard {
+                        title: "Sales (excl. tax)";
+                        value: ReportsData.revenue;
+                        icon: Icons.receipt;
+                        tone: Tone.accent;
+                        sub: "What customers paid for items";
+                    }
+                    StatCard {
+                        title: "Cost of items sold";
+                        value: ReportsData.cost;
+                        icon: Icons.box;
+                        tone: Tone.warn;
+                        sub: "Your purchase cost";
+                    }
+                    StatCard {
+                        title: ReportsData.loss ? "Loss" : "Profit";
+                        value: ReportsData.profit;
+                        icon: Icons.trend-up;
+                        tone: ReportsData.loss ? Tone.danger : Tone.success;
+                        sub: "Sales minus cost";
+                    }
+                    StatCard {
+                        title: "Margin";
+                        value: ReportsData.margin;
+                        icon: Icons.gauge;
+                        tone: Tone.violet;
+                        sub: "Profit as % of sales";
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 16px;
+                    Card {
+                        horizontal-stretch: 3;
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 14px;
+                            Text {
+                                text: "Profit by section";
+                                color: Theme.text;
+                                font-size: Theme.fs-lg;
+                                font-weight: 700;
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                Th {
+                                    horizontal-stretch: 1;
+                                    text: "SECTION";
+                                }
+                                Th {
+                                    width: 110px;
+                                    text: "SALES";
+                                    horizontal-alignment: right;
+                                }
+                                Th {
+                                    width: 110px;
+                                    text: "COST";
+                                    horizontal-alignment: right;
+                                }
+                                Th {
+                                    width: 110px;
+                                    text: "PROFIT";
+                                    horizontal-alignment: right;
+                                }
+                                Th {
+                                    width: 64px;
+                                    text: "MARGIN";
+                                    horizontal-alignment: right;
+                                }
+                            }
+                            for s in ReportsData.sections : VerticalLayout {
+                                spacing: 6px;
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    HorizontalLayout {
+                                        horizontal-stretch: 1;
+                                        spacing: 8px;
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Rectangle {
+                                                width: 10px;
+                                                height: 10px;
+                                                border-radius: 3px;
+                                                background: RepUi.sec-color(s.color);
+                                            }
+                                        }
+                                        Text {
+                                            text: s.name;
+                                            color: Theme.text;
+                                            font-weight: 600;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                    Td {
+                                        width: 110px;
+                                        text: s.revenue;
+                                        horizontal-alignment: right;
+                                    }
+                                    Td {
+                                        width: 110px;
+                                        text: s.cost;
+                                        text-color: Theme.text-2;
+                                        horizontal-alignment: right;
+                                    }
+                                    Td {
+                                        width: 110px;
+                                        text: s.profit;
+                                        text-color: s.negative ? Theme.danger : Theme.success;
+                                        font-weight: 700;
+                                        horizontal-alignment: right;
+                                    }
+                                    Td {
+                                        width: 64px;
+                                        text: s.margin;
+                                        text-color: Theme.text-2;
+                                        horizontal-alignment: right;
+                                    }
+                                }
+                                Rectangle {
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: Theme.surface-3;
+                                    Rectangle {
+                                        x: 0;
+                                        width: parent.width * max(0, s.ratio);
+                                        border-radius: 3px;
+                                        background: RepUi.sec-color(s.color);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Card {
+                        horizontal-stretch: 2;
+                        VerticalLayout {
+                            padding: 20px;
+                            spacing: 10px;
+                            Text {
+                                text: "Summary";
+                                color: Theme.text;
+                                font-size: Theme.fs-lg;
+                                font-weight: 700;
+                            }
+                            for e in ReportsData.extras : KeyValue {
+                                key: e.label;
+                                value: e.value;
+                                strong: e.tone == 9;
+                                value-color: e.tone == 1 ? Theme.danger : e.tone == 2 ? Theme.success : Theme.text;
+                            }
+                            Rectangle { }
+                        }
+                    }
+                }
+                if ReportsData.days.length > 1 : Card {
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 12px;
+                        HorizontalLayout {
+                            spacing: 14px;
+                            Text {
+                                text: "Day by day";
+                                color: Theme.text;
+                                font-size: Theme.fs-lg;
+                                font-weight: 700;
+                                horizontal-stretch: 1;
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                alignment: end;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 10px;
+                                        height: 10px;
+                                        border-radius: 3px;
+                                        background: Theme.accent.transparentize(0.6);
+                                    }
+                                }
+                                Text {
+                                    text: "Sales";
+                                    color: Theme.muted;
+                                    font-size: Theme.fs-sm;
+                                    vertical-alignment: center;
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 10px;
+                                        height: 10px;
+                                        border-radius: 3px;
+                                        background: Theme.success;
+                                    }
+                                }
+                                Text {
+                                    text: "Profit";
+                                    color: Theme.muted;
+                                    font-size: Theme.fs-sm;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            height: 170px;
+                            spacing: ReportsData.days.length > 20 ? 3px : 8px;
+                            for d in ReportsData.days : VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: end;
+                                spacing: 4px;
+                                HorizontalLayout {
+                                    height: 136px;
+                                    spacing: 2px;
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: end;
+                                        Rectangle {
+                                            height: max(2px, d.revenue * 130px);
+                                            border-radius: 3px;
+                                            background: Theme.accent.transparentize(0.6);
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: end;
+                                        Rectangle {
+                                            height: max(2px, d.profit * 130px);
+                                            border-radius: 3px;
+                                            background: Theme.success;
+                                        }
+                                    }
+                                }
+                                Text {
+                                    text: ReportsData.days.length > 14 ? "" : d.label;
+                                    color: Theme.muted;
+                                    font-size: 10px;
+                                    horizontal-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                    }
+                }
+                Card {
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 10px;
+                        HorizontalLayout {
+                            Text {
+                                text: "Profit by item";
+                                color: Theme.text;
+                                font-size: Theme.fs-lg;
+                                font-weight: 700;
+                                horizontal-stretch: 1;
+                                vertical-alignment: center;
+                            }
+                            Segmented {
+                                items: ["All", "Vehicles", "Parts & accessories", "Workshop"];
+                                current <=> ReportsData.item-filter;
+                                changed => {
+                                    ReportsData.refresh();
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            height: 30px;
+                            spacing: 12px;
+                            Th {
+                                width: 120px;
+                                text: "SECTION";
+                            }
+                            Th {
+                                width: 90px;
+                                text: "CODE";
+                            }
+                            Th {
+                                horizontal-stretch: 1;
+                                text: "ITEM";
+                            }
+                            Th {
+                                width: 50px;
+                                text: "QTY";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 105px;
+                                text: "SALES";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 105px;
+                                text: "COST";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 105px;
+                                text: "PROFIT";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 60px;
+                                text: "MARGIN";
+                                horizontal-alignment: right;
+                            }
+                        }
+                        if ReportsData.items.length == 0 : EmptyState {
+                            icon: Icons.chart;
+                            title: "No sales in this period";
+                        }
+                        for it in ReportsData.items : Rectangle {
+                            height: 40px;
+                            Rectangle {
+                                y: 0;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                HorizontalLayout {
+                                    width: 120px;
+                                    spacing: 6px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            width: 8px;
+                                            height: 8px;
+                                            border-radius: 2px;
+                                            background: RepUi.sec-color(it.color);
+                                        }
+                                    }
+                                    Text {
+                                        text: it.section;
+                                        color: Theme.text-2;
+                                        font-size: Theme.fs-sm;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+                                Td {
+                                    width: 90px;
+                                    text: it.code;
+                                    text-color: Theme.accent;
+                                    font-weight: 600;
+                                }
+                                Td {
+                                    horizontal-stretch: 1;
+                                    text: it.name;
+                                }
+                                Td {
+                                    width: 50px;
+                                    text: it.qty;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 105px;
+                                    text: it.revenue;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 105px;
+                                    text: it.cost;
+                                    text-color: Theme.text-2;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 105px;
+                                    text: it.profit;
+                                    text-color: it.negative ? Theme.danger : Theme.success;
+                                    font-weight: 700;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 60px;
+                                    text: it.margin;
+                                    text-color: Theme.text-2;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------ sales
+        if ReportsData.tab == 1 : VerticalLayout {
+            vertical-stretch: 1;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 12px;
+                for s in ReportsData.sales-stats : Rectangle {
+                    height: 64px;
+                    horizontal-stretch: 1;
+                    preferred-width: 100px;
+                    border-radius: Theme.radius-lg;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        padding-left: 16px;
+                        alignment: center;
+                        Text {
+                            text: s.label;
+                            color: Theme.muted;
+                            font-size: Theme.fs-sm;
+                            font-weight: 600;
+                        }
+                        Text {
+                            text: s.value;
+                            color: s.tone == 1 ? Theme.danger : Theme.text;
+                            font-size: Theme.fs-xl;
+                            font-weight: 800;
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Field {
+                    icon: Icons.search;
+                    placeholder: "Search invoice no., customer, phone, item code…";
+                    text <=> ReportsData.sales-search;
+                    edited => {
+                        ReportsData.refresh();
+                    }
+                }
+                Segmented {
+                    items: ["All", "Counter", "Vehicles", "Workshop", "Returns"];
+                    current <=> ReportsData.sales-kind;
+                    changed => {
+                        ReportsData.refresh();
+                    }
+                }
+            }
+            Card {
+                vertical-stretch: 1;
+                clip: true;
+                VerticalLayout {
+                    Rectangle {
+                        height: 40px;
+                        background: Theme.surface-2;
+                        HorizontalLayout {
+                            padding-left: 18px;
+                            padding-right: 18px;
+                            spacing: 12px;
+                            Th {
+                                width: 110px;
+                                text: "INVOICE";
+                            }
+                            Th {
+                                width: 110px;
+                                text: "TYPE";
+                            }
+                            Th {
+                                horizontal-stretch: 1;
+                                text: "CUSTOMER";
+                            }
+                            Th {
+                                width: 160px;
+                                text: "DATE";
+                            }
+                            Th {
+                                width: 100px;
+                                text: "BY";
+                            }
+                            Th {
+                                width: 100px;
+                                text: "DUE";
+                                horizontal-alignment: right;
+                            }
+                            Th {
+                                width: 110px;
+                                text: "TOTAL";
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                    if ReportsData.sales.length == 0 : EmptyState {
+                        vertical-stretch: 1;
+                        icon: Icons.receipt;
+                        title: "No sales in this period";
+                    }
+                    if ReportsData.sales.length > 0 : ListView {
+                        vertical-stretch: 1;
+                        for s in ReportsData.sales : Rectangle {
+                            height: 48px;
+                            background: sta.has-hover ? Theme.hover : transparent;
+                            sta := TouchArea {
+                                width: 100%;
+                                height: 100%;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    ReportsData.open-sale(s.id);
+                                }
+                            }
+                            Rectangle {
+                                y: parent.height - 1px;
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                            HorizontalLayout {
+                                padding-left: 18px;
+                                padding-right: 18px;
+                                spacing: 12px;
+                                Td {
+                                    width: 110px;
+                                    text: s.invoice;
+                                    text-color: Theme.accent;
+                                    font-weight: 700;
+                                }
+                                HorizontalLayout {
+                                    width: 110px;
+                                    alignment: start;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Badge {
+                                            text: s.kind;
+                                            tone: s.is-return ? Tone.danger : s.kind == "Vehicle sale" ? Tone.info : s.kind == "Workshop" ? Tone.violet : Tone.accent;
+                                        }
+                                    }
+                                }
+                                Td {
+                                    horizontal-stretch: 1;
+                                    text: s.customer != "" ? s.customer : "Walk-in";
+                                    text-color: s.customer != "" ? Theme.text : Theme.muted;
+                                }
+                                Td {
+                                    width: 160px;
+                                    text: s.date + ", " + s.time;
+                                    text-color: Theme.text-2;
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: s.user;
+                                    text-color: Theme.text-2;
+                                }
+                                Td {
+                                    width: 100px;
+                                    text: s.owing ? s.balance : "—";
+                                    text-color: s.owing ? Theme.danger : Theme.muted;
+                                    font-weight: 600;
+                                    horizontal-alignment: right;
+                                }
+                                Td {
+                                    width: 110px;
+                                    text: s.total;
+                                    text-color: s.is-return ? Theme.danger : Theme.text;
+                                    font-weight: 700;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------ stock value
+        if ReportsData.tab == 2 : ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 16px;
+                alignment: start;
+                Card {
+                    VerticalLayout {
+                        padding: 22px;
+                        spacing: 12px;
+                        Text {
+                            text: "Stock right now";
+                            color: Theme.text;
+                            font-size: Theme.fs-lg;
+                            font-weight: 700;
+                        }
+                        for s in ReportsData.stock-stats : KeyValue {
+                            key: s.label;
+                            value: s.value;
+                            strong: s.tone == 9;
+                            value-color: s.tone == 1 ? Theme.danger : s.tone == 2 ? Theme.success : Theme.text;
+                        }
+                    }
+                }
+                Text {
+                    text: "Use “Export to Excel” to get the full stock list with quantities and values.";
+                    color: Theme.muted;
+                }
+            }
+        }
+    }
+    if ReportsData.show-sale : SaleDialog { }
+}

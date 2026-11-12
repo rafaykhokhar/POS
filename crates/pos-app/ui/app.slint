@@ -1,0 +1,419 @@
+// Main window: setup → login → app shell with sidebar.
+
+import { Palette } from "std-widgets.slint";
+import { Theme, Tone } from "theme.slint";
+import { Icons, Avatar, IconButton, EmptyState } from "widgets.slint";
+import { App, Page, Perms, SaleRow, CustomerHit, ProductHit, CustomerSearch, ProductLookup, KV } from "globals.slint";
+import { SetupScreen, SetupData, SetupForm } from "screens/setup.slint";
+import { LoginScreen, LoginData, UserTile } from "screens/login.slint";
+import { DashboardScreen, DashData, DashStats, Bar, LowRow, StatusCount, DueRow } from "screens/dashboard.slint";
+import { CounterScreen, CounterData, CartRow, HeldRow, PayForm } from "screens/counter.slint";
+import { VehiclesScreen, VehiclesData, BikeRow, ModelCard, BookingRow, ModelForm, BikeForm, SellLine, SellForm, BookForm, InfoPair, HistRow } from "screens/vehicles.slint";
+import { WorkshopScreen, WorkshopData, JobTile, JobColumn, JobItemRow, BikeHit, JobDetail, JobEdit, NewJobForm, DeliverForm } from "screens/workshop.slint";
+import { CustomersScreen, CustomersData, CustRow, CustForm, LineRow } from "screens/customers.slint";
+import { ReportsScreen, ReportsData, ProfitSec, ProfitLine, DayBar, ReceiptLine } from "screens/reports.slint";
+import { CashScreen, CashData, CashMoveRow, ShiftRow } from "screens/cash.slint";
+import { SettingsScreen, SettingsData, ShopForm, MoneyForm, StaffRow, SvcRow, AuditRow } from "screens/settings.slint";
+import { ProductsScreen, ProductsData, ProductRow, ProductForm, CatRow, ReceiveLine, MoveRow } from "screens/products.slint";
+
+export { App, Page, Perms, SaleRow, CustomerHit, ProductHit, CustomerSearch, ProductLookup, Theme, KV }
+export { SetupData, SetupForm, LoginData, UserTile }
+export { DashData, DashStats, Bar, LowRow, StatusCount, DueRow }
+export { CounterData, CartRow, HeldRow, PayForm }
+export { VehiclesData, BikeRow, ModelCard, BookingRow, ModelForm, BikeForm, SellLine, SellForm, BookForm, InfoPair, HistRow }
+export { WorkshopData, JobTile, JobColumn, JobItemRow, BikeHit, JobDetail, JobEdit, NewJobForm, DeliverForm }
+export { CustomersData, CustRow, CustForm, LineRow }
+export { ReportsData, ProfitSec, ProfitLine, DayBar, ReceiptLine }
+export { CashData, CashMoveRow, ShiftRow }
+export { SettingsData, ShopForm, MoneyForm, StaffRow, SvcRow, AuditRow }
+export { ProductsData, ProductRow, ProductForm, CatRow, ReceiveLine, MoveRow }
+
+component NavItem inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> active;
+    in property <string> badge;
+    callback clicked;
+    height: 42px;
+    border-radius: 10px;
+    background: root.active ? Theme.side-active-bg : ta.has-hover ? Theme.side-hover : transparent;
+    animate background { duration: 120ms; }
+    if root.active : Rectangle {
+        x: 0;
+        width: 3px;
+        height: 20px;
+        border-radius: 2px;
+        background: #2dd4bf;
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.icon;
+                width: 19px;
+                height: 19px;
+                colorize: root.active ? #2dd4bf : Theme.side-text;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            color: root.active ? Theme.side-active : Theme.side-text;
+            font-size: Theme.fs-md;
+            font-weight: root.active ? 700 : 500;
+            vertical-alignment: center;
+        }
+        if root.badge != "" : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 20px;
+                min-width: 20px;
+                border-radius: 10px;
+                background: #ef4444;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    Text {
+                        text: root.badge;
+                        color: #ffffff;
+                        font-size: 11px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+    ta := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component NavGroup inherits Text {
+    color: #5d6b84;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+component Sidebar inherits Rectangle {
+    in property <string> low-badge;
+    width: 236px;
+    background: Theme.side-bg;
+    VerticalLayout {
+        padding: 16px;
+        padding-top: 20px;
+        spacing: 4px;
+        // Brand
+        HorizontalLayout {
+            padding-left: 6px;
+            padding-bottom: 18px;
+            spacing: 11px;
+            Rectangle {
+                width: 38px;
+                height: 38px;
+                border-radius: 11px;
+                background: @linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%);
+                drop-shadow-blur: 14px;
+                drop-shadow-color: #2dd4bf44;
+                Image {
+                    source: Icons.bolt;
+                    width: 20px;
+                    height: 20px;
+                    colorize: #ffffff;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: App.shop-name;
+                    color: #ffffff;
+                    font-size: Theme.fs-md;
+                    font-weight: 800;
+                    overflow: elide;
+                }
+                Text {
+                    text: "Point of Sale";
+                    color: #6b7a93;
+                    font-size: Theme.fs-xs;
+                }
+            }
+        }
+
+        NavGroup {
+            text: "OVERVIEW";
+        }
+        if App.perms.dashboard : NavItem {
+            icon: Icons.dashboard;
+            label: "Dashboard";
+            active: App.page == Page.dashboard;
+            clicked => {
+                App.navigate(Page.dashboard);
+            }
+        }
+        if App.perms.counter : NavItem {
+            icon: Icons.cart;
+            label: "Counter";
+            active: App.page == Page.counter;
+            clicked => {
+                App.navigate(Page.counter);
+            }
+        }
+        Rectangle {
+            height: 10px;
+        }
+        NavGroup {
+            text: "SHOWROOM";
+        }
+        if App.perms.vehicles : NavItem {
+            icon: Icons.scooter;
+            label: "Vehicles";
+            active: App.page == Page.vehicles;
+            clicked => {
+                App.navigate(Page.vehicles);
+            }
+        }
+        if App.perms.workshop : NavItem {
+            icon: Icons.wrench;
+            label: "Workshop";
+            active: App.page == Page.workshop;
+            clicked => {
+                App.navigate(Page.workshop);
+            }
+        }
+        if App.perms.products : NavItem {
+            icon: Icons.box;
+            label: "Parts & Stock";
+            badge: root.low-badge;
+            active: App.page == Page.products;
+            clicked => {
+                App.navigate(Page.products);
+            }
+        }
+        if App.perms.customers : NavItem {
+            icon: Icons.users;
+            label: "Customers";
+            active: App.page == Page.customers;
+            clicked => {
+                App.navigate(Page.customers);
+            }
+        }
+        Rectangle {
+            height: 10px;
+        }
+        NavGroup {
+            text: "MANAGE";
+        }
+        if App.perms.reports : NavItem {
+            icon: Icons.chart;
+            label: "Reports";
+            active: App.page == Page.reports;
+            clicked => {
+                App.navigate(Page.reports);
+            }
+        }
+        if App.perms.cash : NavItem {
+            icon: Icons.wallet;
+            label: "Cash Drawer";
+            active: App.page == Page.cash;
+            clicked => {
+                App.navigate(Page.cash);
+            }
+        }
+        if App.perms.settings || App.perms.staff : NavItem {
+            icon: Icons.settings;
+            label: "Settings";
+            active: App.page == Page.settings;
+            clicked => {
+                App.navigate(Page.settings);
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        // Drawer status
+        Rectangle {
+            height: 34px;
+            border-radius: 9px;
+            background: #ffffff08;
+            HorizontalLayout {
+                padding-left: 12px;
+                spacing: 8px;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: App.drawer-open ? #4ade80 : #64748b;
+                    }
+                }
+                Text {
+                    text: App.drawer-open ? "Cash drawer open" : "Cash drawer closed";
+                    color: #93a1b8;
+                    font-size: Theme.fs-sm;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Rectangle {
+            height: 8px;
+        }
+        // User card
+        Rectangle {
+            height: 56px;
+            border-radius: 12px;
+            background: #ffffff0a;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 6px;
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    Avatar {
+                        initials: App.user-initials;
+                        color-index: App.user-color;
+                        size: 34px;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: App.user-name;
+                        color: #ffffff;
+                        font-size: Theme.fs;
+                        font-weight: 700;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: App.user-role;
+                        color: #6b7a93;
+                        font-size: Theme.fs-xs;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: Theme.dark ? Icons.sun : Icons.moon;
+                        tint: #93a1b8;
+                        size: 30px;
+                        clicked => {
+                            App.toggle-theme();
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: Icons.logout;
+                        tint: #93a1b8;
+                        size: 30px;
+                        clicked => {
+                            App.logout();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Toast inherits Rectangle {
+    in property <string> text;
+    in property <bool> error;
+    height: 48px;
+    width: min(520px, max(260px, label.preferred-width + 70px));
+    border-radius: 12px;
+    background: Theme.dark ? #1f2a40 : #0f172a;
+    drop-shadow-blur: 24px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: #00000050;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 16px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: 11px;
+                background: root.error ? #ef4444 : #14b8a6;
+                Image {
+                    source: root.error ? Icons.x : Icons.check;
+                    width: 13px;
+                    height: 13px;
+                    colorize: #ffffff;
+                }
+            }
+        }
+        label := Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            color: #ffffff;
+            font-size: Theme.fs-md;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    in property <string> low-badge;
+    title: App.shop-name + " · POS";
+    min-width: 1080px;
+    min-height: 640px;
+    preferred-width: 1440px;
+    preferred-height: 900px;
+    background: Theme.bg;
+    default-font-size: 13px;
+
+    if !App.setup-done : SetupScreen {
+        width: 100%;
+        height: 100%;
+    }
+
+    if App.setup-done && !App.logged-in : LoginScreen {
+        width: 100%;
+        height: 100%;
+    }
+
+    if App.setup-done && App.logged-in : HorizontalLayout {
+        Sidebar {
+            low-badge: root.low-badge;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            if App.page == Page.dashboard : DashboardScreen { }
+            if App.page == Page.counter : CounterScreen { }
+            if App.page == Page.vehicles : VehiclesScreen { }
+            if App.page == Page.workshop : WorkshopScreen { }
+            if App.page == Page.products : ProductsScreen { }
+            if App.page == Page.customers : CustomersScreen { }
+            if App.page == Page.reports : ReportsScreen { }
+            if App.page == Page.cash : CashScreen { }
+            if App.page == Page.settings : SettingsScreen { }
+        }
+    }
+
+    if App.toast-visible : Toast {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 28px;
+        text: App.toast-text;
+        error: App.toast-error;
+    }
+}

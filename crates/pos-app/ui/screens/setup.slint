@@ -1,0 +1,318 @@
+// First-run setup: shop details, currency/tax and the owner's PIN.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Tone } from "../theme.slint";
+import { Field, Button, ButtonKind, Icons, Select, Toggle, Card, Notice, Label } from "../widgets.slint";
+
+export struct SetupForm {
+    shop-name: string,
+    phone: string,
+    address: string,
+    currency: string,
+    decimals: int,
+    tax-rate: string,
+    tax-inclusive: bool,
+    owner-name: string,
+    pin: string,
+    pin2: string,
+    demo: bool,
+}
+
+export global SetupData {
+    // Returns an error message, or "" on success.
+    callback submit(SetupForm) -> string;
+}
+
+component Step inherits HorizontalLayout {
+    in property <string> num;
+    in property <string> title;
+    in property <string> text;
+    spacing: 14px;
+    Rectangle {
+        width: 30px;
+        height: 30px;
+        border-radius: 15px;
+        background: #ffffff18;
+        Text {
+            text: root.num;
+            color: #ffffff;
+            font-weight: 700;
+        }
+    }
+    VerticalLayout {
+        spacing: 2px;
+        Text {
+            text: root.title;
+            color: #ffffff;
+            font-size: Theme.fs-md;
+            font-weight: 700;
+        }
+        Text {
+            text: root.text;
+            color: #a8b5ca;
+            font-size: Theme.fs;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component SetupScreen inherits Rectangle {
+    property <string> shop-name;
+    property <string> phone;
+    property <string> address;
+    property <string> currency: "Rs";
+    property <int> decimals: 0;
+    property <string> tax-rate: "0";
+    property <bool> tax-inclusive: true;
+    property <string> owner-name;
+    property <string> pin;
+    property <string> pin2;
+    property <bool> demo: true;
+    property <string> error;
+
+    background: Theme.bg;
+
+    HorizontalLayout {
+        // Brand panel
+        Rectangle {
+            width: 420px;
+            background: @linear-gradient(160deg, #0c1424 0%, #0f2a33 60%, #0d4a45 100%);
+            VerticalLayout {
+                padding: 44px;
+                spacing: 28px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    Rectangle {
+                        width: 44px;
+                        height: 44px;
+                        border-radius: 12px;
+                        background: @linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%);
+                        Image {
+                            source: Icons.bolt;
+                            width: 24px;
+                            height: 24px;
+                            colorize: #ffffff;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: "EV Showroom POS";
+                            color: #ffffff;
+                            font-size: Theme.fs-xl;
+                            font-weight: 800;
+                        }
+                        Text {
+                            text: "Sales · Workshop · Parts";
+                            color: #8fd9cf;
+                            font-size: Theme.fs;
+                        }
+                    }
+                }
+                Text {
+                    text: "Let's set up your shop";
+                    color: #ffffff;
+                    font-size: 34px;
+                    font-weight: 800;
+                    wrap: word-wrap;
+                    letter-spacing: -0.5px;
+                }
+                Text {
+                    text: "This takes about a minute. You can change everything later in Settings.";
+                    color: #a8b5ca;
+                    font-size: Theme.fs-md;
+                    wrap: word-wrap;
+                }
+                Step {
+                    num: "1";
+                    title: "Shop details";
+                    text: "Name and contact shown on receipts and invoices.";
+                }
+                Step {
+                    num: "2";
+                    title: "Money & tax";
+                    text: "Your currency and the tax rate you charge.";
+                }
+                Step {
+                    num: "3";
+                    title: "Owner account";
+                    text: "Your name and a PIN to log in. Add staff afterwards.";
+                }
+                Rectangle { }
+                Text {
+                    text: "Everything is stored on this computer and works without internet.";
+                    color: #7f8ea8;
+                    font-size: Theme.fs-sm;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        // Form
+        ScrollView {
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                alignment: center;
+                padding-top: 40px;
+                padding-bottom: 40px;
+                VerticalLayout {
+                    width: min(640px, root.width - 420px - 80px);
+                    spacing: 20px;
+
+                    Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 16px;
+                            Text {
+                                text: "1  Shop details";
+                                font-size: Theme.fs-lg;
+                                font-weight: 800;
+                                color: Theme.text;
+                            }
+                            Field {
+                                label: "Shop name *";
+                                placeholder: "e.g. Green Wheels EV Showroom";
+                                text <=> root.shop-name;
+                            }
+                            HorizontalLayout {
+                                spacing: 14px;
+                                Field {
+                                    label: "Phone";
+                                    placeholder: "Shop phone number";
+                                    text <=> root.phone;
+                                }
+                                Field {
+                                    label: "Address";
+                                    placeholder: "Street, city";
+                                    text <=> root.address;
+                                }
+                            }
+                        }
+                    }
+
+                    Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 16px;
+                            Text {
+                                text: "2  Money & tax";
+                                font-size: Theme.fs-lg;
+                                font-weight: 800;
+                                color: Theme.text;
+                            }
+                            HorizontalLayout {
+                                spacing: 14px;
+                                Field {
+                                    label: "Currency symbol";
+                                    placeholder: "Rs, $, AED, €…";
+                                    text <=> root.currency;
+                                }
+                                Select {
+                                    label: "Show amounts as";
+                                    model: ["Whole numbers (12,500)", "With cents (12,500.00)"];
+                                    current-index: root.decimals == 0 ? 0 : 1;
+                                    selected(i) => {
+                                        root.decimals = i == 0 ? 0 : 2;
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: 14px;
+                                Field {
+                                    label: "Tax rate";
+                                    suffix: "%";
+                                    placeholder: "0";
+                                    text <=> root.tax-rate;
+                                    hint: "Use 0 if you don't charge tax.";
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 1;
+                                    Toggle {
+                                        text: "Prices already include tax";
+                                        description: root.tax-inclusive ? "Tax is shown inside the price." : "Tax is added on top at checkout.";
+                                        checked <=> root.tax-inclusive;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Card {
+                        VerticalLayout {
+                            padding: 24px;
+                            spacing: 16px;
+                            Text {
+                                text: "3  Owner account";
+                                font-size: Theme.fs-lg;
+                                font-weight: 800;
+                                color: Theme.text;
+                            }
+                            Field {
+                                label: "Your name *";
+                                placeholder: "Owner's name";
+                                text <=> root.owner-name;
+                            }
+                            HorizontalLayout {
+                                spacing: 14px;
+                                Field {
+                                    label: "PIN (4–8 digits) *";
+                                    password: true;
+                                    input-type: InputType.number;
+                                    text <=> root.pin;
+                                }
+                                Field {
+                                    label: "Repeat PIN *";
+                                    password: true;
+                                    input-type: InputType.number;
+                                    text <=> root.pin2;
+                                }
+                            }
+                            Rectangle {
+                                border-radius: Theme.radius;
+                                background: Theme.accent-soft;
+                                VerticalLayout {
+                                    padding: 14px;
+                                    Toggle {
+                                        text: "Fill with sample data so I can explore";
+                                        description: "Adds example bikes, parts, customers, sales and workshop jobs. Good for training; you can start a fresh shop later by deleting the data file.";
+                                        checked <=> root.demo;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if root.error != "" : Notice {
+                        text: root.error;
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        Button {
+                            text: "Create my shop";
+                            icon: Icons.arrow-right;
+                            kind: ButtonKind.primary;
+                            large: true;
+                            clicked => {
+                                root.error = SetupData.submit({
+                                    shop-name: root.shop-name,
+                                    phone: root.phone,
+                                    address: root.address,
+                                    currency: root.currency,
+                                    decimals: root.decimals,
+                                    tax-rate: root.tax-rate,
+                                    tax-inclusive: root.tax-inclusive,
+                                    owner-name: root.owner-name,
+                                    pin: root.pin,
+                                    pin2: root.pin2,
+                                    demo: root.demo,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
