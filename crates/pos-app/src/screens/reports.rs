@@ -388,6 +388,120 @@ fn return_preview(ctx: &Ctx) -> i64 {
     })
 }
 
+/// Profit sheet as CSV: (suggested file name, contents).
+pub(crate) fn profit_csv(ctx: &Ctx) -> Result<(String, String), String> {
+    let (from, to) = dates();
+    let sheet = ctx.pos.profit_sheet(&from, &to).map_err(|_| "Only managers and owners can export profit.".to_string())?;
+    let mut rows: Vec<Vec<String>> = sheet
+        .items
+        .iter()
+        .map(|i| {
+            vec![
+                i.section.label().to_string(),
+                i.code.clone(),
+                i.name.clone(),
+                i.qty.to_string(),
+                plain(ctx, i.revenue),
+                plain(ctx, i.cost),
+                plain(ctx, i.profit),
+                fmt_percent(margin_bp(i.profit, i.revenue)),
+            ]
+        })
+        .collect();
+    rows.push(vec![]);
+    for s in &sheet.sections {
+        rows.push(vec![
+            format!("TOTAL {}", s.section.label()),
+            String::new(),
+            String::new(),
+            s.qty.to_string(),
+            plain(ctx, s.revenue),
+            plain(ctx, s.cost),
+            plain(ctx, s.profit),
+            fmt_percent(margin_bp(s.profit, s.revenue)),
+        ]);
+    }
+    rows.push(vec![
+        "GRAND TOTAL".into(),
+        String::new(),
+        String::new(),
+        String::new(),
+        plain(ctx, sheet.revenue),
+        plain(ctx, sheet.cost),
+        plain(ctx, sheet.profit),
+        fmt_percent(margin_bp(sheet.profit, sheet.revenue)),
+    ]);
+    let csv = to_csv(&["Section", "Code", "Item", "Qty", "Sales", "Cost", "Profit", "Margin"], &rows);
+    Ok((format!("profit-sheet-{from}-to-{to}.csv"), csv))
+}
+
+/// Sales list as CSV.
+pub(crate) fn sales_csv(ctx: &Ctx) -> Result<(String, String), String> {
+    let (from, to) = dates();
+    let list = ctx
+        .pos
+        .list_sales(&SalesFilter { from: from.clone(), to: to.clone(), limit: Some(100_000), ..Default::default() })
+        .unwrap_or_default();
+    let rows: Vec<Vec<String>> = list
+        .iter()
+        .map(|s| {
+            vec![
+                s.invoice_no.clone(),
+                s.created_at.clone(),
+                s.kind.label().to_string(),
+                s.customer_name.clone(),
+                s.user_name.clone(),
+                s.items.to_string(),
+                plain(ctx, s.total),
+                plain(ctx, s.paid),
+                plain(ctx, s.balance()),
+            ]
+        })
+        .collect();
+    let csv = to_csv(&["Invoice", "Date", "Type", "Customer", "By", "Items", "Total", "Paid", "Balance"], &rows);
+    Ok((format!("sales-{from}-to-{to}.csv"), csv))
+}
+
+/// Stock list as CSV.
+pub(crate) fn stock_csv(ctx: &Ctx) -> Result<(String, String), String> {
+    let list = ctx
+        .pos
+        .list_products(&ProductFilter { level: LevelFilter::All, ..Default::default() })
+        .unwrap_or_default();
+    let cost = ctx.pos.can(pos_core::Perm::ViewCost);
+    let rows: Vec<Vec<String>> = list
+        .iter()
+        .map(|p| {
+            let mut r = vec![
+                p.code.clone(),
+                p.name.clone(),
+                p.category_name.clone(),
+                p.stock.to_string(),
+                p.low_stock.to_string(),
+                match p.level() {
+                    pos_core::StockLevel::Out => "OUT".into(),
+                    pos_core::StockLevel::Low => "LOW".into(),
+                    _ => String::new(),
+                },
+                plain(ctx, p.price),
+            ];
+            if cost {
+                r.push(plain(ctx, p.cost));
+                r.push(plain(ctx, p.cost * p.stock.max(0)));
+            }
+            r.push(plain(ctx, p.price * p.stock.max(0)));
+            r
+        })
+        .collect();
+    let mut headers = vec!["Code", "Product", "Category", "Stock", "Red at", "Status", "Price"];
+    if cost {
+        headers.extend(["Cost", "Value at cost"]);
+    }
+    headers.push("Value at price");
+    let csv = to_csv(&headers, &rows);
+    Ok((format!("stock-{}.csv", pos_core::util::today()), csv))
+}
+
 pub fn init(ctx: &Rc<Ctx>) {
     let ui = ctx.ui();
     let r = ui.global::<ReportsData>();
@@ -420,122 +534,23 @@ pub fn init(ctx: &Rc<Ctx>) {
     }
     {
         let ctx = ctx.clone();
-        r.on_export_profit(move || {
-            let (from, to) = dates();
-            let Ok(sheet) = ctx.pos.profit_sheet(&from, &to) else {
-                ctx.err("Only managers and owners can export profit.");
-                return;
-            };
-            let mut rows: Vec<Vec<String>> = sheet
-                .items
-                .iter()
-                .map(|i| {
-                    vec![
-                        i.section.label().to_string(),
-                        i.code.clone(),
-                        i.name.clone(),
-                        i.qty.to_string(),
-                        plain(&ctx, i.revenue),
-                        plain(&ctx, i.cost),
-                        plain(&ctx, i.profit),
-                        fmt_percent(margin_bp(i.profit, i.revenue)),
-                    ]
-                })
-                .collect();
-            rows.push(vec![]);
-            for s in &sheet.sections {
-                rows.push(vec![
-                    format!("TOTAL {}", s.section.label()),
-                    String::new(),
-                    String::new(),
-                    s.qty.to_string(),
-                    plain(&ctx, s.revenue),
-                    plain(&ctx, s.cost),
-                    plain(&ctx, s.profit),
-                    fmt_percent(margin_bp(s.profit, s.revenue)),
-                ]);
-            }
-            rows.push(vec![
-                "GRAND TOTAL".into(),
-                String::new(),
-                String::new(),
-                String::new(),
-                plain(&ctx, sheet.revenue),
-                plain(&ctx, sheet.cost),
-                plain(&ctx, sheet.profit),
-                fmt_percent(margin_bp(sheet.profit, sheet.revenue)),
-            ]);
-            let csv = to_csv(&["Section", "Code", "Item", "Qty", "Sales", "Cost", "Profit", "Margin"], &rows);
-            save_csv(&ctx, &format!("profit-sheet-{from}-to-{to}.csv"), csv);
+        r.on_export_profit(move || match profit_csv(&ctx) {
+            Ok((name, csv)) => save_csv(&ctx, &name, csv),
+            Err(e) => ctx.err(e),
         });
     }
     {
         let ctx = ctx.clone();
-        r.on_export_sales(move || {
-            let (from, to) = dates();
-            let list = ctx
-                .pos
-                .list_sales(&SalesFilter { from: from.clone(), to: to.clone(), limit: Some(100_000), ..Default::default() })
-                .unwrap_or_default();
-            let rows: Vec<Vec<String>> = list
-                .iter()
-                .map(|s| {
-                    vec![
-                        s.invoice_no.clone(),
-                        s.created_at.clone(),
-                        s.kind.label().to_string(),
-                        s.customer_name.clone(),
-                        s.user_name.clone(),
-                        s.items.to_string(),
-                        plain(&ctx, s.total),
-                        plain(&ctx, s.paid),
-                        plain(&ctx, s.balance()),
-                    ]
-                })
-                .collect();
-            let csv = to_csv(&["Invoice", "Date", "Type", "Customer", "By", "Items", "Total", "Paid", "Balance"], &rows);
-            save_csv(&ctx, &format!("sales-{from}-to-{to}.csv"), csv);
+        r.on_export_sales(move || match sales_csv(&ctx) {
+            Ok((name, csv)) => save_csv(&ctx, &name, csv),
+            Err(e) => ctx.err(e),
         });
     }
     {
         let ctx = ctx.clone();
-        r.on_export_stock(move || {
-            let list = ctx
-                .pos
-                .list_products(&ProductFilter { level: LevelFilter::All, ..Default::default() })
-                .unwrap_or_default();
-            let cost = ctx.pos.can(pos_core::Perm::ViewCost);
-            let rows: Vec<Vec<String>> = list
-                .iter()
-                .map(|p| {
-                    let mut r = vec![
-                        p.code.clone(),
-                        p.name.clone(),
-                        p.category_name.clone(),
-                        p.stock.to_string(),
-                        p.low_stock.to_string(),
-                        match p.level() {
-                            pos_core::StockLevel::Out => "OUT".into(),
-                            pos_core::StockLevel::Low => "LOW".into(),
-                            _ => String::new(),
-                        },
-                        plain(&ctx, p.price),
-                    ];
-                    if cost {
-                        r.push(plain(&ctx, p.cost));
-                        r.push(plain(&ctx, p.cost * p.stock.max(0)));
-                    }
-                    r.push(plain(&ctx, p.price * p.stock.max(0)));
-                    r
-                })
-                .collect();
-            let mut headers = vec!["Code", "Product", "Category", "Stock", "Red at", "Status", "Price"];
-            if cost {
-                headers.extend(["Cost", "Value at cost"]);
-            }
-            headers.push("Value at price");
-            let csv = to_csv(&headers, &rows);
-            save_csv(&ctx, &format!("stock-{}.csv", pos_core::util::today()), csv);
+        r.on_export_stock(move || match stock_csv(&ctx) {
+            Ok((name, csv)) => save_csv(&ctx, &name, csv),
+            Err(e) => ctx.err(e),
         });
     }
     {

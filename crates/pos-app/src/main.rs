@@ -4,6 +4,8 @@
 slint::include_modules!();
 
 mod conv;
+#[cfg(test)]
+mod e2e_tests;
 mod ctx;
 mod print;
 mod screens;
