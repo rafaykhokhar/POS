@@ -3,31 +3,124 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
+# A newer push cancels the older run that is still building.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: ev-pos-windows
-            binary: target/release/ev-pos.exe
-          - os: macos-latest
-            artifact: ev-pos-macos
-            binary: target/release/ev-pos
-    runs-on: ${{ matrix.os }}
+  windows:
+    name: Windows (build, test, launch)
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Test
+
+      - name: Run tests
         run: cargo test --workspace
-      - name: Build release
+
+      - name: Build release .exe
         run: cargo build --release -p pos-app
+
+      - name: Build debug app (for the launch test with sample data)
+        run: cargo build -p pos-app
+
+      - name: Launch the app and take screenshots
+        shell: pwsh
+        run: |
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop } catch { Write-Host "Resolution unchanged: $_" }
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          New-Item -ItemType Directory -Force -Path screenshots | Out-Null
+
+          function Take-Shot($name) {
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("screenshots\$name.png", [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose(); $bmp.Dispose()
+          }
+
+          function Run-App($exe, $name, $vars) {
+            foreach ($k in $vars.Keys) { Set-Item -Path "env:$k" -Value $vars[$k] }
+            $err = "$env:RUNNER_TEMP\$name-stderr.txt"
+            $p = Start-Process -FilePath $exe -PassThru -RedirectStandardError $err
+            Start-Sleep -Seconds 15
+            Take-Shot $name
+            if ($p.HasExited) {
+              Get-Content $err -ErrorAction SilentlyContinue
+              throw "${name}: the app closed by itself (exit code $($p.ExitCode))"
+            }
+            Stop-Process -Id $p.Id -Force
+            Start-Sleep -Seconds 2
+            foreach ($k in $vars.Keys) { Remove-Item -Path "env:$k" -ErrorAction SilentlyContinue }
+            Write-Host "${name}: OK"
+          }
+
+          $demo = "$env:RUNNER_TEMP\evpos-demo"
+          Run-App "target\debug\ev-pos.exe" "1-dashboard" @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "dashboard" }
+          Run-App "target\debug\ev-pos.exe" "2-counter"   @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "counter"; EV_POS_DEV_CART = "BRK-001,2*ACC-001"; EV_POS_DEV_PAY = "1" }
+          Run-App "target\debug\ev-pos.exe" "3-workshop"  @{ EV_POS_DATA_DIR = $demo; EV_POS_DEV_DEMO = "1"; EV_POS_DEV_PAGE = "workshop" }
+          Run-App "target\release\ev-pos.exe" "4-release-first-run" @{ EV_POS_DATA_DIR = "$env:RUNNER_TEMP\evpos-fresh" }
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-screenshots
+          path: screenshots/
+
+      - name: Prepare download
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target\release\ev-pos.exe "dist\EV-Showroom-POS-windows.exe"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.binary }}
+          name: EV-Showroom-POS-windows
+          path: dist/EV-Showroom-POS-windows.exe
+
+  macos:
+    name: macOS (build, test, DMG)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Build universal app and DMG
+        run: scripts/package-macos.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EV-Showroom-POS-mac
+          path: dist/*.dmg
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            downloads/EV-Showroom-POS-windows/*.exe
+            downloads/EV-Showroom-POS-mac/*.dmg
+          generate_release_notes: true

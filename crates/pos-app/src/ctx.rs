@@ -89,7 +89,7 @@ impl Ctx {
             let settings = pos_core::Settings { shop_name: "Green Wheels EV".into(), ..Default::default() };
             let _ = self.pos.complete_setup(pos_core::SetupInput {
                 settings,
-                owner_name: "Rafay".into(),
+                owner_name: "Adeel".into(),
                 owner_pin: "1234".into(),
                 demo_data: true,
             });
